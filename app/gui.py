@@ -37,14 +37,25 @@ class Worker(QThread):
     finished_ok = Signal(dict)
     finished_err = Signal(str)
 
-    def __init__(self, pipeline: Pipeline, opt: PipelineOptions):
+    def __init__(self, pipeline_cls, config, opt: "PipelineOptions",
+                 cancel_event):
         super().__init__()
-        self.pipeline = pipeline
+        self._pipeline_cls = pipeline_cls
+        self._config = config
         self.opt = opt
+        self._cancel_event = cancel_event
 
     def run(self):  # noqa: D102
         try:
-            res = self.pipeline.run(self.opt)
+            # Pipeline dibuat di dalam worker thread; callback-nya
+            # memancarkan signal Qt (aman lintas thread), bukan
+            # menyentuh widget GUI langsung.
+            pipe = self._pipeline_cls(
+                self._config,
+                on_progress=lambda s, f: self.progress.emit(s, f),
+                on_log=lambda m: self.logline.emit(m),
+                cancel_event=self._cancel_event)
+            res = pipe.run(self.opt)
             self.finished_ok.emit(res)
         except Exception as e:  # noqa: BLE001
             self.finished_err.emit(str(e))
@@ -256,11 +267,8 @@ class MainWindow(QMainWindow):
 
     def _start_worker(self, opt: PipelineOptions, on_done):
         self.cancel_event.clear()
-        pipe = Pipeline(self.config,
-                        on_progress=self._on_progress,
-                        on_log=self._on_logline,
-                        cancel_event=self.cancel_event)
-        self.worker = Worker(pipe, opt)
+        self.worker = Worker(Pipeline, self.config, opt,
+                             self.cancel_event)
         self.worker.progress.connect(self._on_progress)
         self.worker.logline.connect(self._on_logline)
         self.worker.finished_ok.connect(on_done)
