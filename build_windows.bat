@@ -1,5 +1,5 @@
 @echo off
-REM build_windows.bat — Build Auto Video Editor di Windows (Tahap 10).
+REM build_windows.bat - Build Auto Video Editor di Windows (Tahap 10).
 REM Semua keluaran dicatat ke build.log. Tahan terhadap folder berspasi.
 REM JALANKAN DARI CMD yang sudah terbuka (bukan double-click) agar
 REM pesan galat tidak hilang saat jendela tertutup.
@@ -106,7 +106,7 @@ set "ST=0"
 if errorlevel 1 set "ST=1"
 findstr /c:"[OK]" /c:"[GAGAL]" /c:"SELF-TEST" "%LOG%"
 if %ST% neq 0 (
-    call :log "PERINGATAN: self-test GAGAL — build bermasalah. Lihat build.log."
+    call :log "PERINGATAN: self-test GAGAL - build bermasalah. Lihat build.log."
     goto :fail
 )
 
