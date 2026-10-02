@@ -135,6 +135,8 @@ class MainWindow(QMainWindow):
         f_opt.addRow("API key:", self.ed_key)
         self.chk_sfx = QCheckBox("Tanpa SFX")
         f_opt.addRow("", self.chk_sfx)
+        self.chk_no_ai = QCheckBox("Tanpa AI (aturan preset, hemat kuota)")
+        f_opt.addRow("", self.chk_no_ai)
 
         # kunci efek (auto+kunci)
         g_lock = QGroupBox("Matikan efek (auto+kunci)")
@@ -261,6 +263,7 @@ class MainWindow(QMainWindow):
             lang=None if self.cb_lang.currentText() == "auto"
             else self.cb_lang.currentText(),
             no_sfx=self.chk_sfx.isChecked(),
+            no_ai=self.chk_no_ai.isChecked(),
             dry_run=dry_run,
             api_key=self._save_key(),
         )

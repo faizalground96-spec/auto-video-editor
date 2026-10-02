@@ -159,6 +159,7 @@ def cmd_run(args) -> int:
         from_edl=Path(args.from_edl) if args.from_edl else None,
         preview=args.preview, force_reanalyze=args.force_reanalyze,
         fake_llm=Path(args.fake_llm) if args.fake_llm else None,
+        no_ai=args.no_ai,
         seed=args.seed,
         work_dir=Path(args.work_dir) if args.work_dir else None,
     )
@@ -225,6 +226,8 @@ def main(argv=None) -> int:
     ap.add_argument("--force-reanalyze", action="store_true")
     ap.add_argument("--fake-llm", metavar="JSON",
                     help="pakai fixture offline (uji)")
+    ap.add_argument("--no-ai", action="store_true",
+                    help="tanpa Gemini: EDL dari aturan preset (hemat kuota)")
     ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args(argv)
 

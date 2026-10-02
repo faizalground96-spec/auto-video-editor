@@ -348,6 +348,109 @@ def analyze_video(
     return raw
 
 
+def rule_based_edl(duration: float, aspect: str, words: list[dict],
+                   silences: list[dict], preset: Optional[dict] = None,
+                   registry=None) -> dict:
+    """Buat EDL tanpa AI: aturan tetap dari preset (mode hemat kuota).
+
+    - Segmen: belah per jeda (silence) atau tiap 8 detik.
+    - Efek: rotasi dari daftar allowed preset; teks kinetik selalu aktif
+      bila ada transkrip; grade & text_style dari fixed preset.
+    """
+    from .presets import preset_allowed_ids
+    allowed = preset_allowed_ids(preset, registry) if preset else []
+    fixed = (preset or {}).get("fixed") or {}
+    text_style = fixed.get("text_style", "text.pop_in_word")
+    grade = fixed.get("grade", "grade.cinematic")
+    preset_name = (preset or {}).get("name", "tanpa preset")
+
+    # -- segmen: belah di jeda panjang, maks 8 detik per segmen ----------
+    cuts = [0.0]
+    for s in silences or []:
+        mid = (s.get("start", 0) + s.get("end", 0)) / 2
+        if mid - cuts[-1] >= 3.0:
+            cuts.append(mid)
+    # pastikan tak ada segmen > 8 detik
+    refined = [cuts[0]]
+    for c in cuts[1:]:
+        while c - refined[-1] > 8.0:
+            refined.append(refined[-1] + 8.0)
+        refined.append(c)
+    if duration - refined[-1] > 0.5:
+        refined.append(duration)
+    elif len(refined) == 1:
+        refined.append(duration)
+
+    # -- efek per kategori (dipilih dari allowed) -------------------------
+    def pick(prefix: str, fallback_list: list[str]) -> Optional[str]:
+        cands = [e for e in allowed if e.startswith(prefix)]
+        if cands:
+            return cands[0]
+        for f in fallback_list:
+            if f in allowed:
+                return f
+        return None
+
+    cam_fx = [e for e in allowed if e.startswith("camera.")]
+    txt_fx = text_style if text_style in allowed else pick(
+        "text.", ["text.pop_in_word", "text.clean_caption"])
+    # kata penekanan: kata panjang (>6 huruf) tiap segmen, maks 3
+    segments = []
+    for i in range(len(refined) - 1):
+        start, end = refined[i], refined[i + 1]
+        seg_words = [w for w in words
+                     if w.get("end", 0) > start and w.get("start", 0) < end]
+        effects = []
+        # kamera: rotasi
+        if cam_fx:
+            effects.append({"id": cam_fx[i % len(cam_fx)],
+                            "at": None, "params": {}})
+        # teks kinetik: selalu, bila ada kata
+        if seg_words and txt_fx:
+            effects.append({"id": txt_fx, "at": None, "params": {}})
+        # keyword merah: 1-3 kata terpanjang
+        if seg_words and "text.red_keyword" in allowed:
+            long_ws = sorted(set(w.get("word", "") for w in seg_words
+                                 if len(w.get("word", "")) > 6),
+                             key=len, reverse=True)[:3]
+            if long_ws:
+                effects.append({"id": "text.red_keyword", "at": None,
+                                "params": {"words": long_ws}})
+        # overlay sesekali
+        ov = pick("overlay.", [])
+        if ov and i % 3 == 1:
+            effects.append({"id": ov, "at": None, "params": {}})
+        # transisi antar segmen
+        tr = pick("transition.", [])
+        if tr and i > 0:
+            effects.append({"id": tr, "at": start, "params": {}})
+        segments.append({
+            "start": round(start, 3), "end": round(end, 3),
+            "role": "body",
+            "effects": effects,
+            "why": f"Aturan preset {preset_name}: segmen {i + 1}.",
+        })
+
+    return {
+        "schema_version": 2,
+        "canvas": {"aspect": aspect,
+                   "reframe": {"mode": "none",
+                               "why": "Aturan: tanpa reframe."}},
+        "analysis": {"topic": "aturan-preset", "genre": "",
+                     "mood": "netral", "energy": "medium",
+                     "speech_pace": ""},
+        "global": {
+            "text_style": {"id": text_style, "params": {}},
+            "grade": {"id": grade, "params": {}},
+            "intensity": (preset or {}).get("default_intensity",
+                                            "medium"),
+            "why": f"Aturan preset {preset_name} (tanpa AI).",
+        },
+        "emphasis_words": [],
+        "segments": segments,
+    }
+
+
 def fallback_edl(duration: float, aspect: str) -> dict:
     """Rencana cadangan bila Gemini gagal total (plan 6e)."""
     return {

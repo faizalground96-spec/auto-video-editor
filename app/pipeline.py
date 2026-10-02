@@ -45,6 +45,7 @@ class PipelineOptions:
     preview: Optional[float] = None   # detik, draft rendah
     force_reanalyze: bool = False
     fake_llm: Optional[Path] = None
+    no_ai: bool = False          # EDL dari aturan preset, tanpa Gemini
     seed: Optional[int] = None
     work_dir: Optional[Path] = None
     api_key: Optional[str] = None
@@ -176,19 +177,26 @@ class Pipeline:
 
         # -- analisis --------------------------------------------------------
         self._p("analisis", 0.10)
-        self._log("Analisis Gemini...")
-        client = self._client(opt)
         intensity_hint = opt.intensity or (
             preset.get("default_intensity") if preset else None)
         notes = opt.user_notes or ""
         if intensity_hint:
             notes = (notes + f" [intensitas: {intensity_hint}]").strip()
-        raw = analyze_video(opt.input, words, silences, face_summary,
-                            self.registry, client, self.config, vdir,
-                            aspect=aspect, user_notes=notes, seed=opt.seed,
-                            force_reanalyze=opt.force_reanalyze,
-                            cancel_event=self.cancel,
-                            allowed=allowed, denied=denied)
+        if opt.no_ai:
+            self._log("Mode tanpa AI: EDL dari aturan preset...")
+            from .analyze import rule_based_edl
+            raw = rule_based_edl(info.duration, aspect, words, silences,
+                                 preset, self.registry)
+        else:
+            self._log("Analisis Gemini...")
+            client = self._client(opt)
+            raw = analyze_video(opt.input, words, silences, face_summary,
+                                self.registry, client, self.config, vdir,
+                                aspect=aspect, user_notes=notes,
+                                seed=opt.seed,
+                                force_reanalyze=opt.force_reanalyze,
+                                cancel_event=self.cancel,
+                                allowed=allowed, denied=denied)
         raw = preset_apply_fixed(raw, preset)
         self._check_cancel()
 
