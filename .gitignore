@@ -13,3 +13,6 @@ assets/models/models--*/
 assets/models/blobs/
 assets/models/.locks/
 assets/models/CACHEDIR.TAG
+
+# model unduhan runtime (Whisper dkk), jangan commit
+models/
