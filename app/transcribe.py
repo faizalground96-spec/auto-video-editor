@@ -210,6 +210,8 @@ def transcribe(
     if on_progress:
         on_progress("whisper", 0.0)
     t0 = time.time()
+    log.info("Memuat model Whisper '%s' (unduh otomatis bila belum ada)...",
+             model_name)
     model = WhisperModel(
         model_name,
         device="cpu",

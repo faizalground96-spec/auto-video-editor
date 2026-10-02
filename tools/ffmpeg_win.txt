@@ -1,0 +1,10 @@
+# tools/ffmpeg_win.txt — URL FFmpeg Windows terpaku untuk build_windows.bat
+# Format: baris pertama URL, baris kedua SHA256 (hex, huruf kecil).
+# Build: "essentials" dari gyan.dev (sudah termasuk libx264).
+# CATATAN: gyan.dev tidak menyediakan checksum terpisah; SHA256 di bawah
+# adalah contoh — ganti dengan hasil `certutil -hashfile ffmpeg.zip SHA256`
+# dari berkas yang Anda unduh dan percayai, ATAU kosongkan baris kedua
+# (build tetap jalan dengan peringatan).
+
+https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+

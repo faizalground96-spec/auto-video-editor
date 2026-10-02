@@ -1,4 +1,4 @@
-# requirements.txt — versi terpaku dari lingkungan yang sudah teruji (Tahap 0).
+# requirements.txt — versi terpaku dari lingkungan yang sudah teruji.
 # CATATAN: av dipin ke 14.2.0 karena faster-whisper 1.2.1 RUSAK dengan av>=15
 # (av.open() got an unexpected keyword argument 'metadata_errors').
 av==14.2.0
@@ -13,3 +13,5 @@ pytest==9.1.1
 python-dotenv==1.2.4
 PySide6==6.11.2
 PyYAML==6.0.3
+# --- hanya untuk build Windows (tidak wajib di runtime) ---
+pyinstaller==6.22.3
