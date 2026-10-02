@@ -77,6 +77,12 @@ class EffectContext:
     assets_dir: Path
     config: dict                   # config.yaml (penuh)
     face_track: Optional[Any] = None
+    # Rentang segmen (waktu absolut sumber) — diisi renderer per chunk.
+    # Efek berbasis waktu memakai waktu LOKAL (t=0 di awal segmen).
+    seg_start: float = 0.0
+    seg_end: float = 0.0
+    # Kurva smart_crop global (dari app.reframe), diisi renderer bila ada.
+    smart_crop_curve: Optional[Any] = None
 
 
 @dataclass

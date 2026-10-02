@@ -1,62 +1,42 @@
-"""render.py — KERANGKA mesin render (Tahap 3).
+"""render.py — mesin render inti (Tahap 4).
 
-Hanya cukup untuk membuktikan jalur ujung-ke-ujung dengan 4 efek pertama:
-normalisasi -> reframe -> grade -> efek segmen -> bakar ASS -> audio copy.
-Tahap 4 akan mengganti ini dengan mesin penuh (chunk, manifest, resume,
-smart_crop, dsb).
+Arsitektur:
+  linimasa dipartisi jadi chunk (segmen EDL + celah) ->
+  tiap chunk dirender terpisah (video saja) dengan manifest/resume ->
+  chunk digabung via concat demuxer ->
+  pass akhir: bakar ASS sekali untuk seluruh linimasa + audio ->
+  QA otomatis.
+
+Waktu di EDL = waktu video sumber. Efek berbasis `t` memakai waktu
+LOKAL chunk (trim+setpts me-reset ke 0); ASS memakai waktu absolut.
+Urutan lapisan baku (1.3): normalisasi -> reframe -> kamera -> grade ->
+layout/insert -> overlay/transisi -> teks ASS (pass akhir) -> audio.
+Maksimal dua kali encode video.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import subprocess
 import threading
 from pathlib import Path
 from typing import Callable, Optional
 
+import yaml
+
 from .canvas import Canvas, resolve_aspect
-from .probe import probe
+from .probe import SourceInfo, probe
+from .qa import QACtx, run_qa
+from .reframe import ensure_face_track, smart_crop_curve
 from .registry import EffectRegistry
 from .schema import Edl, EffectContext
-from .utils import CancelledError, ff_filter_path, log, run_ffmpeg
+from .subtitles import build_ass, write_srt
+from .utils import (CancelledError, app_dirs, ff_filter_path, find_ffmpeg,
+                    log, resource_path, run_ffmpeg)
 
-
-def _ass_time(sec: float) -> str:
-    sec = max(0.0, sec)
-    h = int(sec // 3600)
-    m = int((sec % 3600) // 60)
-    s = sec % 60
-    return f"{h}:{m:02d}:{s:05.2f}"
-
-
-def _write_ass(events: list[dict], canvas: Canvas, config: dict,
-               fonts_dir: Path, path: Path) -> Path:
-    """Tulis file ASS minimal untuk dibakar libass (pass akhir)."""
-    cap = config["caption"]
-    font_px = canvas.font_px(cap["font_pct"][canvas.aspect])
-    anchor_y = cap["anchor_y"][canvas.aspect]
-    margin_v = max(10, int(canvas.height * (1 - anchor_y) - font_px * 0.75))
-    margin_lr = canvas.w(canvas.safe_side)
-    header = f"""[Script Info]
-ScriptType: v4.00+
-PlayResX: {canvas.width}
-PlayResY: {canvas.height}
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,{cap['font_family']},{font_px},&H00FFFFFF,&H000019FF,&H00141414,&H99000000,-1,0,0,0,100,100,0,0,1,2,1,2,{margin_lr},{margin_lr},{margin_v},1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-    lines = [header]
-    for ev in events:
-        text = ev["text"].replace("\n", "\\N")
-        lines.append(
-            f"Dialogue: 0,{_ass_time(ev['start'])},{_ass_time(ev['end'])},"
-            f"{ev.get('style', 'Caption')},,0,0,0,,{text}")
-    path.write_text("\n".join(lines), encoding="utf-8")
-    return path
+CHUNK_CRF = 16
+FINAL_CRF_FALLBACK = 20
 
 
 def _video_dir(work_root: Path, source: Path) -> Path:
@@ -66,10 +46,82 @@ def _video_dir(work_root: Path, source: Path) -> Path:
     return d
 
 
+def _ffmpeg_version() -> str:
+    out = subprocess.run([str(find_ffmpeg()), "-hide_banner", "-version"],
+                         capture_output=True, text=True)
+    return (out.stdout or "").splitlines()[0] if out.stdout else "?"
+
+
+def _partition(duration: float, segments: list) -> list[tuple]:
+    """Partisi linimasa -> [(start, end, segment|None)]."""
+    bounds = {0.0, duration}
+    for s in segments:
+        bounds.add(max(0.0, s.start))
+        bounds.add(min(duration, s.end))
+    b = sorted(bounds)
+    chunks = []
+    for a, c in zip(b[:-1], b[1:]):
+        if c - a < 1e-6:
+            continue
+        seg = next((s for s in segments
+                    if s.start <= a + 1e-6 and s.end >= c - 1e-6), None)
+        chunks.append((a, c, seg))
+    return chunks
+
+
+def _chunk_hash(source_hash: str, chunk_edl: dict, ffmpeg_v: str,
+                fingerprint: str, extra: dict) -> str:
+    h = hashlib.sha256()
+    h.update(json.dumps({"sh": source_hash, "edl": chunk_edl,
+                         "ff": ffmpeg_v, "fp": fingerprint,
+                         "x": extra}, sort_keys=True).encode())
+    return h.hexdigest()[:16]
+
+
+def _face_boxes_at_factory(mode: str, curve, src_w: int, src_h: int,
+                           canvas: Canvas, face_track: Optional[dict]):
+    """Kembalikan fn(t) -> kotak wajah dalam piksel kanvas (utk hindari teks)."""
+    W, H = canvas.width, canvas.height
+
+    def fn(t: float) -> list[tuple]:
+        if not face_track:
+            return []
+        samples = face_track.get("samples", [])
+        best, bd = None, 1e9
+        for s in samples:
+            d = abs(s["t"] - t)
+            if d < bd:
+                best, bd = s, d
+        if best is None or bd > 1.0 or not best["faces"]:
+            return []
+        boxes = []
+        for f in best["faces"]:
+            fx, fy = f["x"] * src_w, f["y"] * src_h
+            fw, fh = f["w"] * src_w, f["h"] * src_h
+            if mode == "smart_crop" and curve:
+                from .qa import _curve_center_at
+                cx, cy = _curve_center_at(curve, t)
+                cw, ch = curve["crop_w"], curve["crop_h"]
+                ox = (fx - (cx - cw / 2)) * (W / cw)
+                oy = (fy - (cy - ch / 2)) * (H / ch)
+                ow, oh = fw * (W / cw), fh * (H / ch)
+            elif mode in ("blur_fill", "fit_letterbox", "none"):
+                sc = min(W / src_w, H / src_h)
+                ox = fx * sc + (W - src_w * sc) / 2
+                oy = fy * sc + (H - src_h * sc) / 2
+                ow, oh = fw * sc, fh * sc
+            else:
+                continue
+            boxes.append((ox, oy, ow, oh))
+        return boxes
+
+    return fn
+
+
 def render_edl(
     edl_path: str | Path,
     source: str | Path,
-    output: str | Path,
+    output: Optional[str | Path] = None,
     words: Optional[list[dict]] = None,
     config: Optional[dict] = None,
     work_root: Optional[str | Path] = None,
@@ -78,18 +130,22 @@ def render_edl(
     model_dir: Optional[str | Path] = None,
     on_progress: Optional[Callable[[float], None]] = None,
     cancel_event: Optional[threading.Event] = None,
-) -> Path:
-    """Render EDL tulisan tangan (kerangka). Mengembalikan path output."""
-    import yaml  # impor lokal agar modul ringan
-
+) -> dict:
+    """Render EDL -> video + QA. Kembalikan {"output", "qa", "work_dir"}."""
     source = Path(source)
-    output = Path(output)
     edl = Edl.model_validate(json.loads(Path(edl_path).read_text()))
 
     if config is None:
-        from .utils import resource_path
         config = yaml.safe_load(
-            (resource_path("config.yaml")).read_text(encoding="utf-8"))
+            resource_path("config.yaml").read_text(encoding="utf-8"))
+    if work_root is None:
+        work_root = app_dirs()["work"]
+    work_root = Path(work_root)
+    if catalog_dir is None:
+        catalog_dir = resource_path("catalog")
+    if assets_dir is None:
+        assets_dir = resource_path("assets")
+    assets_dir = Path(assets_dir)
 
     info = probe(source)
     aspect = edl.canvas.aspect
@@ -97,103 +153,289 @@ def render_edl(
         aspect = resolve_aspect("auto", info.aspect_ratio())
     canvas = Canvas.from_aspect(aspect)
 
-    if work_root is None:
-        from .utils import app_dirs
-        work_root = app_dirs()["work"]
-    vdir = _video_dir(Path(work_root), source)
-    rdir = vdir / "render_skeleton"
-    rdir.mkdir(parents=True, exist_ok=True)
+    vdir = _video_dir(work_root, source)
+    cdir = vdir / "chunks"
+    cdir.mkdir(parents=True, exist_ok=True)
 
-    if catalog_dir is None:
-        from .utils import resource_path
-        catalog_dir = resource_path("catalog")
     registry = EffectRegistry(catalog_dir, assets_dir).load()
+    fingerprint = registry.fingerprint()
+    ffmpeg_v = _ffmpeg_version()
 
+    # -- kata (satu sumber kebenaran timing) --------------------------------
     if words is None:
         from .transcribe import transcribe
         r = transcribe(source, work_root, config["transcribe"],
                        model_dir=Path(model_dir) if model_dir else None)
         words = json.loads((r["video_dir"] / "words.json").read_text())
-
-    ctx = EffectContext(canvas=canvas, source=info, words=words,
-                        work_dir=rdir,
-                        assets_dir=Path(assets_dir) if assets_dir
-                        else Path("assets"),
-                        config=config, face_track=None)
-
-    segs: list[str] = []
-    segs.append("[0:v]fps=30,setsar=1,format=yuv420p[vbase];")
-
-    # -- reframe ---------------------------------------------------------
-    mode = edl.canvas.reframe.mode
-    if mode == "none":
-        if (info.width, info.height) == (canvas.width, canvas.height):
-            segs.append("[vbase]null[vref];")
-        else:
-            segs.append(
-                f"[vbase]scale={canvas.width}:{canvas.height}:"
-                f"force_original_aspect_ratio=increase,"
-                f"crop={canvas.width}:{canvas.height}[vref];")
+        source_hash = r["meta"]["key"]["source_hash"]
     else:
-        out = registry.build(f"reframe.{mode}", ctx, None, {})
-        assert len(out.video_filters) == 1 and "[vbase]" in out.video_filters[0]
-        segs.append(out.video_filters[0] + ";")
+        from .transcribe import _hash_source
+        source_hash = _hash_source(source)
 
-    # -- grade global ----------------------------------------------------
-    cur = "vref"
-    if edl.global_.grade:
-        g = edl.global_.grade
-        out = registry.build(g.id, ctx, None, g.params)
-        nxt = "vg"
-        for f in out.video_filters:
-            segs.append(f"[{cur}]{f}[{nxt}];")
-            cur = nxt
+    # -- face track (sumber kebenaran posisi wajah) --------------------------
+    yunet = assets_dir / "models" / "face_detection_yunet_2023mar.onnx"
+    face_track = ensure_face_track(
+        source, vdir, config.get("reframe", {}),
+        yunet if yunet.is_file() else None, info)
+    has_faces = face_track.get("n_faces_total", 0) > 0
 
-    # -- efek per segmen (diurut waktu; pakai ekspresi t, tanpa split) ----
-    seg_effects = []
-    for s in edl.segments:
-        for e in s.effects:
-            seg_effects.append(e)
-    seg_effects.sort(key=lambda e: (e.at if e.at is not None else 0.0))
-    for k, e in enumerate(seg_effects):
-        out = registry.build(e.id, ctx, e.at, e.params)
-        for f in out.video_filters:
-            nxt = f"vs{k}"
-            segs.append(f"[{cur}]{f}[{nxt}];")
-            cur = nxt
+    # -- mode reframe (termasuk aturan cadangan 'auto') -----------------------
+    mode = edl.canvas.reframe.mode
+    if mode == "auto":
+        mode = _auto_reframe(info, canvas, face_track)
+        log.info("reframe auto -> %s", mode)
+    curve = None
+    if mode == "smart_crop":
+        if not has_faces:
+            log.warning("smart_crop tanpa wajah terdeteksi -> blur_fill")
+            mode = "blur_fill"
+        else:
+            curve = smart_crop_curve(
+                face_track, info.width, info.height,
+                canvas.width, canvas.height,
+                config.get("reframe", {}), info.duration)
+            if curve is None:
+                log.warning("smart_crop: wajah terlalu lebar -> blur_fill")
+                mode = "blur_fill"
+            else:
+                (vdir / "smart_crop_curve.json").write_text(
+                    json.dumps({"points": curve["points"],
+                                "crop_w": curve["crop_w"],
+                                "crop_h": curve["crop_h"],
+                                "axis": curve["axis"]}))
+                log.info("smart_crop: %d titik kurva, sumbu %s",
+                         len(curve["points"]), curve["axis"])
+    if info.width < 700:
+        log.warning("sumber beresolusi rendah (%dx%d): hasil akan lembut",
+                    info.width, info.height)
 
-    # -- teks ASS (pass akhir) -------------------------------------------
+    # -- partisi & render chunk ----------------------------------------------
+    chunks = _partition(info.duration, sorted(edl.segments,
+                                              key=lambda s: s.start))
+    manifest_p = vdir / "render_manifest.json"
+    manifest = (json.loads(manifest_p.read_text(encoding="utf-8"))
+                if manifest_p.is_file() else {"chunks": {}})
+    chunk_files: list[Path] = []
+    total_chunks = len(chunks)
+
+    for idx, (s0, s1, seg) in enumerate(chunks):
+        cid = f"chunk_{idx:03d}"
+        chunk_edl = {
+            "seg": seg.model_dump(mode="json") if seg else None,
+            "global": edl.global_.model_dump(mode="json"),
+            "canvas": {"aspect": aspect, "reframe": mode},
+        }
+        want_hash = _chunk_hash(source_hash, chunk_edl, ffmpeg_v,
+                                fingerprint,
+                                {"crf": CHUNK_CRF, "seg": [s0, s1]})
+        got = manifest.get("chunks", {}).get(cid)
+        cfile = cdir / f"{cid}.mp4"
+        if (got and got.get("hash") == want_hash and cfile.is_file()
+                and not (cancel_event and cancel_event.is_set())):
+            log.info("[%d/%d] %s: pakai ulang", idx + 1, total_chunks, cid)
+            chunk_files.append(cfile)
+            continue
+        if cancel_event and cancel_event.is_set():
+            raise CancelledError("render dibatalkan")
+        log.info("[%d/%d] %s: render %.2f-%.2fs", idx + 1, total_chunks,
+                 cid, s0, s1)
+        ctx = EffectContext(
+            canvas=canvas, source=info, words=words, work_dir=cdir,
+            assets_dir=assets_dir, config=config, face_track=face_track,
+            seg_start=s0, seg_end=s1, smart_crop_curve=curve)
+        _render_chunk(source, info, canvas, mode, registry, ctx, edl,
+                      seg, s0, s1, cfile, config, cancel_event)
+        manifest.setdefault("chunks", {})[cid] = {
+            "hash": want_hash, "file": cfile.name}
+        manifest_p.write_text(json.dumps(manifest, indent=2))
+        chunk_files.append(cfile)
+        if on_progress:
+            on_progress(s1)  # kasar: progres per chunk
+
+    # -- gabung + pass akhir --------------------------------------------------
+    if output is None:
+        outdir = app_dirs()["output"]
+        outdir.mkdir(parents=True, exist_ok=True)
+        output = outdir / (f"{source.stem}_edited_"
+                           f"{aspect.replace(':', 'x')}.mp4")
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    # kumpulkan ASS dari efek teks (global)
     ass_events: list[dict] = []
     if edl.global_.text_style:
         t = edl.global_.text_style
-        out = registry.build(t.id, ctx, None, t.params)
-        ass_events.extend(out.ass_events)
-    fonts_dir = Path(assets_dir) / "fonts" if assets_dir else Path("assets/fonts")
-    ass_path = _write_ass(ass_events, canvas, config, fonts_dir,
-                          rdir / "subs.ass")
-    segs.append(f"[{cur}]ass='{ff_filter_path(ass_path)}':"
-                f"fontsdir='{ff_filter_path(fonts_dir)}'[vout];")
+        ctx0 = EffectContext(canvas=canvas, source=info, words=words,
+                             work_dir=vdir, assets_dir=assets_dir,
+                             config=config, face_track=face_track)
+        ass_events.extend(registry.build(t.id, ctx0, None, t.params)
+                          .ass_events)
+    for s in edl.segments:  # (cadangan: efek teks per segmen)
+        for e in s.effects:
+            try:
+                if registry.get(e.id).meta.category == "text":
+                    ctx0 = EffectContext(
+                        canvas=canvas, source=info, words=words,
+                        work_dir=vdir, assets_dir=assets_dir, config=config,
+                        face_track=face_track,
+                        seg_start=s.start, seg_end=s.end)
+                    ass_events.extend(
+                        registry.build(e.id, ctx0, e.at, e.params).ass_events)
+            except KeyError:
+                pass
 
-    filtergraph = "\n".join(segs)
-    fg_path = rdir / "filter_complex.txt"
-    fg_path.write_text(filtergraph, encoding="utf-8")
+    ass_path = None
+    if ass_events:
+        face_fn = _face_boxes_at_factory(
+            mode, curve, info.width, info.height, canvas, face_track)
+        ass_text = build_ass(ass_events, canvas, config,
+                             assets_dir / "fonts", face_fn)
+        ass_path = vdir / "subs.ass"
+        ass_path.write_text(ass_text, encoding="utf-8")
+        if config["output"].get("export_srt"):
+            write_srt(ass_events, output.with_suffix(".srt"))
 
-    args = ["-i", str(source), "-filter_complex_script", str(fg_path),
-            "-map", "[vout]",
-            "-c:v", config["output"].get("encoder", "libx264"),
-            "-preset", config["output"].get("preset", "veryfast"),
-            "-crf", str(config["output"].get("crf", 20)),
-            "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-r", "30"]
+    _final_pass(chunk_files, source, info, output, ass_path, assets_dir,
+                config, cancel_event)
+
+    # -- QA -------------------------------------------------------------------
+    q = QACtx(output=output, source=source, source_info=info, canvas=canvas,
+              config={**config, "fonts_dir": str(assets_dir / "fonts")},
+              edl=edl, registry=registry, face_track=face_track,
+              smart_crop_curve=curve, ass_path=ass_path, sfx_cues=[])
+    report = run_qa(q, vdir)
+    return {"output": output, "qa": report, "work_dir": vdir,
+            "reframe_mode": mode}
+
+
+def _auto_reframe(info: SourceInfo, canvas: Canvas,
+                  face_track: Optional[dict]) -> str:
+    """Aturan cadangan bila Gemini gagal / mode 'auto' (Bagian 0)."""
+    src_ar = info.width / info.height
+    tgt_ar = canvas.width / canvas.height
+    if abs(src_ar - tgt_ar) / tgt_ar <= 0.03:
+        return "none"
+    samples = (face_track or {}).get("samples", [])
+    faces_now = [f for s in samples[:8] for f in s["faces"]]
+    if not faces_now:
+        return "blur_fill"  # wajah tidak terdeteksi
+    # gabungan kotak > 85% lebar crop -> blur_fill
+    xs = [f["x"] for f in faces_now]
+    xe = [f["x"] + f["w"] for f in faces_now]
+    combined = max(xe) - min(xs)
+    # perkiraan lebar crop relatif: min(1, tgt_ar/src_ar)
+    rel_crop_w = min(1.0, tgt_ar / src_ar)
+    if len(faces_now) >= 2 and combined > 0.85 * rel_crop_w:
+        return "blur_fill"
+    return "smart_crop"
+
+
+def _render_chunk(source: Path, info: SourceInfo, canvas: Canvas, mode: str,
+                  registry: EffectRegistry, ctx: EffectContext, edl: Edl,
+                  seg, s0: float, s1: float, cfile: Path, config: dict,
+                  cancel_event) -> None:
+    """Render satu chunk video (tanpa audio)."""
+    W, H = canvas.width, canvas.height
+    segs = [f"[0:v]trim=start={s0:.3f}:end={s1:.3f},setpts=PTS-STARTPTS,"
+            f"fps=30,setsar=1,format=yuv420p"]
+    # Catatan: rotasi metadata ditangani autorotate bawaan ffmpeg
+    # (default aktif) -> frame yang masuk filter SUDAH terotasi benar,
+    # konsisten dengan app.probe. Jangan tambah transpose manual.
+    segs[0] += "[vbase];"
+
+    # reframe
+    if mode == "none":
+        if (info.width, info.height) == (W, H):
+            segs.append("[vbase]null[vref];")
+        else:
+            segs.append(f"[vbase]scale={W}:{H}:"
+                        f"force_original_aspect_ratio=increase,"
+                        f"crop={W}:{H}[vref];")
+    else:
+        out = registry.build(f"reframe.{mode}", ctx, None, {})
+        assert len(out.video_filters) == 1 and \
+            "[vbase]" in out.video_filters[0], \
+            f"kontrak reframe dilanggar: {mode}"
+        segs.append(out.video_filters[0] + ";")
+
+    cur = "vref"
+    # grade global
+    if edl.global_.grade:
+        g = edl.global_.grade
+        for f in registry.build(g.id, ctx, None, g.params).video_filters:
+            nxt = cur + "g"
+            segs.append(f"[{cur}]{f}[{nxt}];")
+            cur = nxt
+    # efek segmen (waktu lokal: at - s0)
+    if seg:
+        for k, e in enumerate(sorted(
+                seg.effects, key=lambda x: x.at or 0.0)):
+            at = None if e.at is None else e.at - s0
+            for f in registry.build(
+                    e.id, ctx, at, e.params).video_filters:
+                nxt = f"{cur}e{k}"
+                segs.append(f"[{cur}]{f}[{nxt}];")
+                cur = nxt
+    segs.append(f"[{cur}]null[vout]")
+
+    fg = ctx.work_dir / f"chunk_{s0:.2f}.txt"
+    fg.write_text("\n".join(segs), encoding="utf-8")
+    run_ffmpeg(["-i", str(source), "-filter_complex_script", str(fg),
+                "-map", "[vout]", "-c:v", "libx264", "-preset", "veryfast",
+                "-crf", str(CHUNK_CRF), "-pix_fmt", "yuv420p",
+                "-r", "30", "-g", "30", "-an", str(cfile)],
+               cancel_event=cancel_event, cwd=ctx.work_dir)
+
+
+def _final_pass(chunk_files: list[Path], source: Path, info: SourceInfo,
+                output: Path, ass_path: Optional[Path], assets_dir: Path,
+                config: dict, cancel_event) -> None:
+    """Gabung chunk (concat demuxer) + bakar ASS + audio -> output."""
+    workdir = output.parent
+    lst = workdir / "concat_list.txt"
+    lst.write_text("".join(f"file '{p.resolve()}'\n" for p in chunk_files),
+                   encoding="utf-8")
+    out_cfg = config["output"]
+    enc = out_cfg.get("encoder", "libx264")
+
+    args = ["-f", "concat", "-safe", "0", "-i", str(lst),
+            "-i", str(source)]
+    if ass_path:
+        fontsdir = assets_dir / "fonts"
+        args += ["-filter_complex",
+                 f"[0:v]ass='{ff_filter_path(ass_path)}':"
+                 f"fontsdir='{ff_filter_path(fontsdir)}'[vout]",
+                 "-map", "[vout]"]
+    else:
+        args += ["-map", "0:v"]
     if info.has_audio:
-        args += ["-map", "0:a", "-c:a", "copy"]
+        args += ["-map", "1:a"]
+        # Tahap 4: tanpa SFX & tanpa pemetaan waktu -> copy bila AAC
+        args += ["-c:a", "copy"] if info.audio_codec == "aac" \
+            else ["-c:a", "aac", "-b:a", "192k"]
     else:
         args += ["-an"]
-    args.append(str(output))
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    if cancel_event and cancel_event.is_set():
-        raise CancelledError("render dibatalkan")
-    run_ffmpeg(args, on_progress=on_progress, cancel_event=cancel_event,
-               cwd=rdir)
+    def build_args(encoder: str) -> list[str]:
+        a = list(args)
+        if ass_path:
+            a += ["-c:v", encoder, "-preset",
+                  out_cfg.get("preset", "veryfast"),
+                  "-crf", str(out_cfg.get("crf", FINAL_CRF_FALLBACK)),
+                  "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                  "-r", "30"]
+        else:
+            a += ["-c:v", "copy"]
+        a.append(str(output))
+        return a
+
+    try:
+        run_ffmpeg(build_args(enc), cancel_event=cancel_event, cwd=workdir)
+    except subprocess.CalledProcessError:
+        if enc != "libx264":
+            log.warning("encoder %s gagal, coba libx264", enc)
+            run_ffmpeg(build_args("libx264"), cancel_event=cancel_event,
+                       cwd=workdir)
+        else:
+            raise
     log.info("render selesai: %s", output)
-    return output

@@ -152,6 +152,8 @@ def transcribe(
     lang: override bahasa ("id"/"en"/...); None -> pakai cfg (auto=None).
     """
     from faster_whisper import WhisperModel  # impor lambat (berat)
+    from .utils import sanitize_proxy_env
+    sanitize_proxy_env()  # no_proxy bracket merusak httpx (huggingface_hub)
 
     source = Path(source)
     work_root = Path(work_root)
