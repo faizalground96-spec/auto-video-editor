@@ -1,0 +1,23 @@
+{
+  "serius": {
+    "text": "text.typewriter",
+    "grade": "grade.cinematic",
+    "intensity": "calm",
+    "density": 0.0,
+    "edl_path": "/home/hatch/workspace/auto-video-editor/work_tahap6_serius/edl.json"
+  },
+  "opini": {
+    "text": "text.clean_caption",
+    "grade": "grade.clean_bright",
+    "intensity": "calm",
+    "density": 0.0,
+    "edl_path": "/home/hatch/workspace/auto-video-editor/work_tahap6_opini/edl.json"
+  },
+  "energik": {
+    "text": "text.pop_in_word",
+    "grade": "grade.warm_pop",
+    "intensity": "aggressive",
+    "density": 1.0889103958774577,
+    "edl_path": "/home/hatch/workspace/auto-video-editor/work_tahap6_energik/edl.json"
+  }
+}

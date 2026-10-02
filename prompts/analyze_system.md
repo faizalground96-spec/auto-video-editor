@@ -33,6 +33,20 @@ Aturan:
     reflektif HARUS mendapat kombinasi (gaya teks, grade, intensitas) yang
     berbeda dari video berita/opini yang tegas dan informatif. Jangan samakan
     keduanya. Gunakan baris tabel yang berbeda untuk genre yang berbeda.
+12. JANGAN default ke `text.pop_in_word` + `grade.cinematic` + `medium` untuk
+    semua video talking head. Tentukan dulu nadanya:
+    tenang/reflektif -> `text.typewriter` + `calm`;
+    tegas/informatif -> `text.pop_in_word` + `medium`;
+    santai/ceria -> `text.clean_caption` atau `text.pop_in_word` +
+    `grade.warm_pop` + `medium` atau `calm`.
+    Kalau dua video talking head nadanya beda, kombinasinya HARUS beda.
+
+## Contoh 3 — dua talking head, nada beda, gaya HARUS beda
+
+Video A (ceramah tenang): `text.typewriter` + `grade.cinematic` + `calm`.
+Video B (opini tegas): `text.pop_in_word` + `grade.cinematic` + `medium`.
+Video C (obrolan santai): `text.clean_caption` + `grade.warm_pop` + `calm`.
+Ketiganya talking head, ketiganya kombinasi berbeda. Ikuti pola ini.
 
 Panduan kecenderungan (bukan aturan baku; sesuaikan dengan isi video):
 
