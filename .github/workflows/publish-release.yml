@@ -1,0 +1,34 @@
+name: Publish Release v1.0.1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: AutoVideoEditor-windows
+          path: artifact
+          run-id: 37044398225
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Re-zip artifact
+        run: |
+          cd artifact
+          zip -qr ../AutoVideoEditor-windows.zip .
+          ls -la ../AutoVideoEditor-windows.zip
+      - name: Create GitHub Release v1.0.1
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.1
+          name: v1.0.1
+          body: "Windows build of Auto Video Editor from commit 430f1c7 (bundles silero_vad_v6.onnx). Contains the portable Windows .exe package."
+          draft: false
+          prerelease: false
+          files: AutoVideoEditor-windows.zip
