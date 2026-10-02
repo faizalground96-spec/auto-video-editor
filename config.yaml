@@ -1,0 +1,58 @@
+# Konfigurasi Auto Video Editor
+# Semua ukuran efek memakai persen kanvas (lihat app/canvas.py), bukan piksel tetap.
+
+output:
+  aspect: auto            # auto | 9:16 | 16:9 | 1:1 | 4:5
+  fps: 30
+  crf: 20
+  preset: veryfast
+  encoder: libx264        # libx264 | h264_nvenc | h264_qsv | h264_amf
+  export_srt: true
+
+reframe:
+  mode: auto              # auto | smart_crop | blur_fill | fit_letterbox
+  face_sample_interval: 0.25
+  deadzone: 0.06          # fraksi lebar crop; bingkai diam selama wajah masih di zona ini
+  max_speed: 0.20         # fraksi lebar crop per detik
+  smooth_tau: 0.6         # detik, konstanta peredam
+  bg_blur_sigma: 24
+  bg_darken: 0.35
+
+transcribe:
+  model: small            # small di VM uji; medium/large-v3 disarankan di PC Windows yang kuat
+  language: auto          # auto | id | en | ...
+  compute_type: int8
+  cpu_threads: 0          # 0 = otomatis
+  vad_filter: true
+
+gemini:
+  # Terverifikasi di Tahap 0 (2026-10-02): gemini-2.5-flash mendukung video.
+  # gemini-3-flash-preview juga ada tapi masih preview — jangan dipakai default.
+  model: gemini-2.5-flash
+  fallback_model: ""
+  temperature: 0.4
+  max_json_retries: 2
+  max_net_retries: 3
+  timeout_s: 300
+  proxy_height: 540
+  delete_uploaded_after: true
+  review_pass: false      # [P2]
+
+density:                  # anggaran efek "kuat" (META.strong = true)
+  calm:       {max_strong_per_10s: 1, min_gap_s: 2.5, sfx: false}
+  medium:     {max_strong_per_10s: 3, min_gap_s: 1.5, sfx: true, sfx_volume: 0.30}
+  aggressive: {max_strong_per_10s: 5, min_gap_s: 1.0, sfx: true, sfx_volume: 0.40}
+
+caption:
+  font_family: Montserrat # nama keluarga font internal (dibaca lewat fontTools)
+  font_pct:  {"9:16": 0.042, "16:9": 0.055, "1:1": 0.050, "4:5": 0.045}
+  anchor_y:  {"9:16": 0.64,  "16:9": 0.85, "1:1": 0.80, "4:5": 0.78}    # pusat blok teks, persen tinggi
+  max_chars_per_line: {vertical: 16, horizontal: 34, square: 22}
+  max_lines: 2
+  emphasis_scale: 1.25
+
+qa:
+  face_inside_ratio: 0.95
+  max_crop_speed: 0.20
+  max_jump_per_frame: 0.015
+  max_audio_corr_min: 0.99
