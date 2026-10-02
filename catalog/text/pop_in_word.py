@@ -14,7 +14,7 @@ META = {
     "version": 1,
     "description": "Caption kinetik: kata muncul satu per satu mengikuti "
                    "ucapan; kata kunci bisa merah & lebih besar.",
-    "good_for": ["energetic", "social_media", "hook"],
+    "good_for": ["energetic", "social_media", "hook", "news", "opinion"],
     "avoid_for": ["calm", "serious"],
     "params": {
         "emphasis_idx": {"type": "list", "default": [],

@@ -14,7 +14,7 @@ META = {
     "status": "stable",
     "version": 1,
     "description": "Efek mesin ketik: kata muncul berurutan dengan kursor.",
-    "good_for": ["storytelling", "hook"],
+    "good_for": ["storytelling", "hook", "ceramah", "reflective", "calm"],
     "avoid_for": ["calm"],
     "params": {},
     "aspects": ["9:16", "16:9", "1:1", "4:5"],

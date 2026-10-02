@@ -29,6 +29,7 @@ META = {
     "strong": True,
     "min_gap": 1.0,
     "conflicts_with": [],
+    "requires_at": True,
     "requires": {"assets": ["stickers"], "face": False},
     "sfx": None,
 }

@@ -21,6 +21,7 @@ META = {
     "strong": True,
     "min_gap": 1.0,
     "conflicts_with": ["camera.crash_zoom", "camera.slow_push"],
+    "requires_at": True,
     "requires": {"assets": [], "face": False},
     "sfx": "pop",
 }

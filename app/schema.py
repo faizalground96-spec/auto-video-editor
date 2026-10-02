@@ -47,6 +47,7 @@ class EffectMeta(BaseModel):
     min_gap: float = 0.0
     conflicts_with: list[str] = Field(default_factory=list)
     requires: EffectRequires = Field(default_factory=EffectRequires)
+    requires_at: bool = False  # True bila build() butuh at (batas/waktu)
     sfx: Optional[str] = None
 
     @field_validator("aspects")
@@ -103,7 +104,7 @@ class EffectOutput:
 
 
 # ---------------------------------------------------------------------------
-# EDL minimal (kerangka Tahap 3; diperluas di Tahap 6)
+# EDL (Tahap 3: minimal; Tahap 6: analysis, emphasis_words, closing, seed)
 # ---------------------------------------------------------------------------
 class ReframeSpec(BaseModel):
     mode: str = "none"             # none | smart_crop | blur_fill | fit_letterbox
@@ -113,6 +114,11 @@ class ReframeSpec(BaseModel):
 class CanvasSpec(BaseModel):
     aspect: str = "auto"
     reframe: ReframeSpec = Field(default_factory=ReframeSpec)
+    # Tahap 6 (opsional; diisi validator bila kosong):
+    width: Optional[int] = None
+    height: Optional[int] = None
+    fps: Optional[float] = None
+    source_orientation: Optional[str] = None
 
     @field_validator("aspect")
     @classmethod
@@ -130,7 +136,8 @@ class EffectRef(BaseModel):
 class GlobalSpec(BaseModel):
     text_style: Optional[EffectRef] = None
     grade: Optional[EffectRef] = None
-    intensity: str = "medium"
+    intensity: str = "medium"      # calm | medium | aggressive
+    why: str = ""
 
 
 class SegmentEffect(BaseModel):
@@ -142,14 +149,42 @@ class SegmentEffect(BaseModel):
 class Segment(BaseModel):
     start: float = 0.0
     end: float = 0.0
-    role: str = "body"
+    role: str = "body"             # hook | body | puncak | penutup | ...
     effects: list[SegmentEffect] = Field(default_factory=list)
+    why: str = ""
+
+
+class AnalysisInfo(BaseModel):
+    """Hasil analisis Gemini atas video (deskriptif, bukan perintah render)."""
+    topic: str = ""
+    genre: str = ""
+    mood: str = ""
+    energy: str = "medium"         # low | medium | high
+    speech_pace: str = ""
+    face_box_hint: Optional[dict[str, float]] = None  # x,y,w,h relatif
+    important_onscreen_text: bool = False
+
+
+class EmphasisWord(BaseModel):
+    """Kata penekanan: idx -> words.json (waktu diisi validator)."""
+    idx: int
+    word: str = ""
+
+
+class ClosingSpec(BaseModel):
+    id: str = "closing.title_card"
+    text: str = ""
+    start: float = 0.0
 
 
 class Edl(BaseModel):
-    schema_version: int = 1
+    schema_version: int = 2
     canvas: CanvasSpec = Field(default_factory=CanvasSpec)
+    analysis: AnalysisInfo = Field(default_factory=AnalysisInfo)
     global_: GlobalSpec = Field(default_factory=GlobalSpec, alias="global")
+    emphasis_words: list[EmphasisWord] = Field(default_factory=list)
     segments: list[Segment] = Field(default_factory=list)
+    closing: Optional[ClosingSpec] = None
+    seed: Optional[int] = None
 
     model_config = {"populate_by_name": True}

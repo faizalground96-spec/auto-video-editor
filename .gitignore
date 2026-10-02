@@ -16,3 +16,4 @@ assets/models/CACHEDIR.TAG
 
 # model unduhan runtime (Whisper dkk), jangan commit
 models/
+work_*/
