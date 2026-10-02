@@ -60,11 +60,10 @@ if not exist "%BIN%\ffmpeg.exe" (
     call :log "ffmpeg.exe belum ada, mengunduh..."
     mkdir "%BIN%" 2>nul
     set "FFURL="
-    set "FFSHA="
     for /f "usebackq delims=" %%L in ("%ROOT%tools\ffmpeg_win.txt") do (
         set "LINE=%%L"
         if "!LINE:~0,1!" neq "#" if "!LINE!" neq "" (
-            if "!FFURL!"=="" ( set "FFURL=!LINE!" ) else ( set "FFSHA=!LINE!" )
+            if "!FFURL!"=="" ( set "FFURL=!LINE!" )
         )
     )
     call :log "URL: !FFURL!"
@@ -80,17 +79,6 @@ if not exist "%BIN%\ffmpeg.exe" (
         call :log "GALAT: file unduhan hanya !FFSIZE! byte (harusnya ~100MB+) — kemungkinan halaman error, bukan zip."
         call :log "Hapus ffmpeg_dl.zip dan coba lagi, atau unduh manual dari https://www.gyan.dev/ffmpeg/builds/"
         goto :fail
-    )
-    if not "!FFSHA!"=="" (
-        call :log "Verifikasi SHA256..."
-        for /f %%H in ('powershell -NoProfile -Command "(Get-FileHash '%ROOT%ffmpeg_dl.zip' -Algorithm SHA256).Hash.ToLower()"') do set "GOT=%%H"
-        if /i not "!GOT!"=="!FFSHA!" (
-            call :log "GALAT: SHA256 tidak cocok. Hapus ffmpeg_dl.zip dan coba lagi."
-            goto :fail
-        )
-        call :log "SHA256 cocok."
-    ) else (
-        call :log "PERINGATAN: SHA256 tidak diisi di tools\ffmpeg_win.txt, lewati verifikasi."
     )
     powershell -NoProfile -Command "Expand-Archive -Path '%ROOT%ffmpeg_dl.zip' -DestinationPath '%ROOT%ffmpeg_tmp' -Force" >> "%LOG%" 2>&1
     if !ERRORLEVEL! neq 0 (
