@@ -1,6 +1,8 @@
 @echo off
 REM build_windows.bat — Build Auto Video Editor di Windows (Tahap 10).
 REM Semua keluaran dicatat ke build.log. Tahan terhadap folder berspasi.
+REM JALANKAN DARI CMD yang sudah terbuka (bukan double-click) agar
+REM pesan galat tidak hilang saat jendela tertutup.
 setlocal EnableDelayedExpansion
 
 set "ROOT=%~dp0"
@@ -28,9 +30,8 @@ if %ERRORLEVEL%==0 (
             set "PY=python"
             call :log "Python: python (fallback)"
         ) else (
-            call :log "GALAT: Python tidak ditemukan."
-            echo GALAT: Python 3.11 atau 3.12 tidak ditemukan. Pasang dari python.org. | tee -a "%LOG%"
-            exit /b 1
+            call :log "GALAT: Python 3.11 atau 3.12 tidak ditemukan. Pasang dari python.org."
+            goto :fail
         )
     )
 )
@@ -41,16 +42,16 @@ if not exist "%VENV%\Scripts\python.exe" (
     call :log "Membuat venv..."
     %PY% -m venv "%VENV%" >> "%LOG%" 2>&1
     if %ERRORLEVEL% neq 0 (
-        echo GALAT: gagal membuat venv. Lihat build.log. | tee -a "%LOG%"
-        exit /b 1
+        call :log "GALAT: gagal membuat venv. Lihat build.log."
+        goto :fail
     )
 )
-call :log "pip install -r requirements.txt ..."
+call :log "pip install -r requirements.txt (ini lama, tunggu) ..."
 "%VENV%\Scripts\python.exe" -m pip install --upgrade pip >> "%LOG%" 2>&1
 "%VENV%\Scripts\python.exe" -m pip install -r "%ROOT%requirements.txt" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo GALAT: pip install gagal. Lihat build.log. | tee -a "%LOG%"
-    exit /b 1
+    call :log "GALAT: pip install gagal. Lihat build.log."
+    goto :fail
 )
 
 REM --- 3. ffmpeg.exe --------------------------------------------------------
@@ -70,19 +71,16 @@ if not exist "%BIN%\ffmpeg.exe" (
     powershell -NoProfile -Command "Invoke-WebRequest -Uri '!FFURL!' -OutFile '%ROOT%ffmpeg_dl.zip'" >> "%LOG%" 2>&1
     if %ERRORLEVEL% neq 0 (
         call :log "GALAT: unduhan ffmpeg gagal."
-        echo. | tee -a "%LOG%"
-        echo GALAT: unduhan ffmpeg gagal. | tee -a "%LOG%"
-        echo Silakan unduh manual dari https://www.gyan.dev/ffmpeg/builds/ | tee -a "%LOG%"
-        echo lalu letakkan ffmpeg.exe di: "%BIN%\ffmpeg.exe" | tee -a "%LOG%"
-        exit /b 1
+        call :log "Silakan unduh manual dari https://www.gyan.dev/ffmpeg/builds/"
+        call :log "lalu letakkan ffmpeg.exe di: %BIN%\ffmpeg.exe"
+        goto :fail
     )
     if not "!FFSHA!"=="" (
         call :log "Verifikasi SHA256..."
         for /f %%H in ('powershell -NoProfile -Command "(Get-FileHash '%ROOT%ffmpeg_dl.zip' -Algorithm SHA256).Hash.ToLower()"') do set "GOT=%%H"
         if /i not "!GOT!"=="!FFSHA!" (
-            call :log "GALAT: SHA256 tidak cocok."
-            echo GALAT: SHA256 ffmpeg tidak cocok. Hapus ffmpeg_dl.zip dan coba lagi. | tee -a "%LOG%"
-            exit /b 1
+            call :log "GALAT: SHA256 tidak cocok. Hapus ffmpeg_dl.zip dan coba lagi."
+            goto :fail
         )
         call :log "SHA256 cocok."
     ) else (
@@ -97,8 +95,8 @@ if not exist "%BIN%\ffmpeg.exe" (
     rmdir /s /q "%ROOT%ffmpeg_tmp" 2>nul
     del "%ROOT%ffmpeg_dl.zip" 2>nul
     if not exist "%BIN%\ffmpeg.exe" (
-        echo GALAT: ffmpeg.exe tak ketemu di arsip. | tee -a "%LOG%"
-        exit /b 1
+        call :log "GALAT: ffmpeg.exe tak ketemu di arsip."
+        goto :fail
     )
     call :log "ffmpeg.exe siap."
 ) else (
@@ -106,33 +104,42 @@ if not exist "%BIN%\ffmpeg.exe" (
 )
 
 REM --- 4. pyinstaller --------------------------------------------------------
-call :log "--- pyinstaller ---"
+call :log "--- pyinstaller (ini lama, tunggu) ---"
 "%VENV%\Scripts\python.exe" -m PyInstaller --version >> "%LOG%" 2>&1
 "%VENV%\Scripts\pyinstaller.exe" "%ROOT%build.spec" --noconfirm >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo GALAT: pyinstaller gagal. Lihat build.log. | tee -a "%LOG%"
-    exit /b 1
+    call :log "GALAT: pyinstaller gagal. Lihat build.log."
+    goto :fail
 )
 
 REM --- 5. self-test hasil build ----------------------------------------------
 call :log "--- self-test ---"
 set "CLIEXE=%ROOT%dist\AutoVideoEditor\AutoVideoEditorCLI.exe"
 if not exist "%CLIEXE%" (
-    echo GALAT: %CLIEXE% tidak ada. | tee -a "%LOG%"
-    exit /b 1
+    call :log "GALAT: %CLIEXE% tidak ada."
+    goto :fail
 )
 "%CLIEXE%" --self-test >> "%LOG%" 2>&1
 set "ST=%ERRORLEVEL%"
-type "%LOG%" | findstr /c:"[OK]" /c:"[GAGAL]" /c:"SELF-TEST"
+findstr /c:"[OK]" /c:"[GAGAL]" /c:"SELF-TEST" "%LOG%"
 if %ST% neq 0 (
-    echo. | tee -a "%LOG%"
-    echo PERINGATAN: self-test GAGAL — build bermasalah. Lihat build.log. | tee -a "%LOG%"
-    exit /b 1
+    call :log "PERINGATAN: self-test GAGAL — build bermasalah. Lihat build.log."
+    goto :fail
 )
 
-echo. | tee -a "%LOG%"
-echo BUILD SELESAI: dist\AutoVideoEditor\ | tee -a "%LOG%"
+call :log ""
+call :log "BUILD SELESAI: dist\AutoVideoEditor\"
+echo.
+echo Selesai. Tekan Enter untuk tutup.
+set /p "DUMMY="
 exit /b 0
+
+:fail
+echo.
+echo Build GAGAL. Lihat build.log untuk detail.
+echo Tekan Enter untuk tutup.
+set /p "DUMMY="
+exit /b 1
 
 :log
 echo %~1 >> "%LOG%"
