@@ -1,0 +1,11 @@
+name: calm_story
+description: "Hangat, pelan, tanpa efek keras"
+allowed:
+  - text.typewriter
+  - text.clean_caption
+  - camera.slow_zoom
+  - grade.cinematic
+  - overlay.progress_bar
+fixed:
+  text_style: text.typewriter
+default_intensity: calm

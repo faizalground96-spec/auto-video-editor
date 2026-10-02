@@ -1,0 +1,11 @@
+name: clean_podcast
+description: "Kalem, caption bersih, sedikit efek"
+allowed:
+  - text.clean_caption
+  - camera.slow_zoom
+  - grade.clean_bright
+  - overlay.progress_bar
+fixed:
+  text_style: text.clean_caption
+  grade: grade.clean_bright
+default_intensity: calm

@@ -1,0 +1,15 @@
+name: hype_viral
+description: "Cepat, banyak zoom dan flash"
+allowed:
+  - text.pop_in_word
+  - camera.punch_in
+  - camera.whip_pan
+  - grade.warm_pop
+  - overlay.emoji_burst
+  - transition.whip
+  - transition.zoom_blur
+  - insert.b_roll_top
+fixed:
+  text_style: text.pop_in_word
+  grade: grade.warm_pop
+default_intensity: aggressive

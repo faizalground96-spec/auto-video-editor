@@ -1,0 +1,14 @@
+name: edu_explainer
+description: "Jelas, kata kunci disorot"
+allowed:
+  - text.karaoke_highlight
+  - text.red_keyword
+  - camera.punch_in
+  - grade.clean_bright
+  - layout.split_compare
+  - insert.b_roll_top
+  - overlay.progress_bar
+fixed:
+  text_style: text.karaoke_highlight
+  grade: grade.clean_bright
+default_intensity: medium

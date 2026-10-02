@@ -188,7 +188,7 @@ class GeminiClient(LLMClient):
 # ---------------------------------------------------------------------------
 def _cache_key(source: Path, words: list[dict], fingerprint: str,
                prompt_text: str, aspect: str, user_notes: str,
-               seed: Optional[int]) -> str:
+               seed: Optional[int], allowed=None, denied=None) -> str:
     h = hashlib.sha256()
     h.update(str(source.stat().st_size).encode())
     h.update(str(int(source.stat().st_mtime)).encode())
@@ -199,7 +199,23 @@ def _cache_key(source: Path, words: list[dict], fingerprint: str,
     h.update(aspect.encode())
     h.update(user_notes.encode())
     h.update(str(seed).encode())
+    h.update(json.dumps(sorted(allowed or [])).encode())
+    h.update(json.dumps(sorted(denied or [])).encode())
     return h.hexdigest()[:16]
+
+
+def _mode_note(allowed, denied) -> str:
+    """Catatan batasan mode untuk system prompt (Tahap 8)."""
+    parts = []
+    if allowed:
+        parts.append(
+            "MODE PRESET: kamu HANYA boleh memakai efek yang tercantum "
+            "di katalog di bawah. Jangan memakai ID efek lain apa pun.")
+    if denied:
+        parts.append(
+            "MODE AUTO+KUNCI: efek berikut DIMATIKAN pengguna dan tidak "
+            f"boleh dipakai: {', '.join(sorted(denied))}.")
+    return " ".join(parts)
 
 
 def build_transcript_indexed(words: list[dict]) -> str:
@@ -208,7 +224,8 @@ def build_transcript_indexed(words: list[dict]) -> str:
 
 
 def build_system_prompt(cfg: dict, aspect: str, orientation: str,
-                        source_orientation: str, user_notes: str) -> str:
+                        source_orientation: str, user_notes: str,
+                        mode_note: str = "") -> str:
     from .utils import resource_path
     tpl = (resource_path("prompts/analyze_system.md")
            .read_text(encoding="utf-8"))
@@ -228,6 +245,8 @@ def build_system_prompt(cfg: dict, aspect: str, orientation: str,
     }
     for k, v in subs.items():
         tpl = tpl.replace(k, v)
+    if mode_note:
+        tpl += "\n\n## Batasan mode\n" + mode_note + "\n"
     return tpl
 
 
@@ -245,6 +264,8 @@ def analyze_video(
     seed: Optional[int] = None,
     force_reanalyze: bool = False,
     cancel_event=None,
+    allowed: Optional[list[str]] = None,  # Tahap 8: mode preset
+    denied: Optional[list[str]] = None,    # Tahap 8: auto + kunci
 ) -> dict:
     """Jalankan analisis -> kembalikan dict EDL mentah (belum divalidasi).
 
@@ -261,9 +282,11 @@ def analyze_video(
 
     prompt_text = build_system_prompt(
         cfg, aspect, CANVAS_SPECS[aspect]["orientation"],
-        info.orientation, user_notes)
+        info.orientation, user_notes, mode_note=_mode_note(
+            allowed, denied))
     key = _cache_key(source, words, registry.fingerprint(),
-                     prompt_text, aspect, user_notes, seed)
+                     prompt_text, aspect, user_notes, seed,
+                     allowed, denied)
     cache_path = work_dir / "edl_cache.json"
     if not force_reanalyze and cache_path.is_file():
         try:
@@ -283,7 +306,8 @@ def analyze_video(
     req = AnalyzeRequest(
         video_path=proxy_path,
         transcript_indexed=build_transcript_indexed(words),
-        catalog_text=registry.describe(aspect),
+        catalog_text=registry.describe(aspect, allowed=allowed,
+                                         denied=denied),
         duration=duration,
         face_summary=face_summary,
         aspect=aspect,

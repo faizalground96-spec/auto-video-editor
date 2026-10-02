@@ -99,6 +99,8 @@ def validate_edl(raw: dict, registry, words: list[dict],
                  cfg: dict, dry_run: bool = False,
                  work_dir: Optional[Path] = None,
                  face_detected: bool = False,
+                 allowed: Optional[list[str]] = None,  # Tahap 8: preset
+                 denied: Optional[list[str]] = None,   # Tahap 8: kunci
                  ) -> tuple[bool, list[str], dict]:
     """Validasi EDL mentah -> (ok, errors, edl_bersih).
 
@@ -173,6 +175,15 @@ def validate_edl(raw: dict, registry, words: list[dict],
             drop(f"global.{gkey} {g['id']} dibuang ({m_or_why})")
             d["global"][gkey] = None
             continue
+        # Tahap 8: penegakan mode (preset/kunci) juga untuk gaya global
+        if allowed is not None and g["id"] not in allowed:
+            drop(f"global.{gkey} {g['id']} di luar paket preset, dibuang")
+            d["global"][gkey] = None
+            continue
+        if denied is not None and g["id"] in denied:
+            drop(f"global.{gkey} {g['id']} dimatikan pengguna, dibuang")
+            d["global"][gkey] = None
+            continue
         g["params"] = _clean_params(g["id"], g.get("params"), m_or_why, fixed)
 
     # -- segmen ---------------------------------------------------------------
@@ -200,6 +211,13 @@ def validate_edl(raw: dict, registry, words: list[dict],
             ok, m_or_why = effect_ok(eid)
             if not ok:
                 drop(f"efek {eid} dibuang ({m_or_why})")
+                continue
+            # Tahap 8: penegakan mode preset / kunci
+            if allowed is not None and eid not in allowed:
+                drop(f"efek {eid} di luar paket preset, dibuang")
+                continue
+            if denied is not None and eid in denied:
+                drop(f"efek {eid} dimatikan pengguna, dibuang")
                 continue
             at = ef.get("at")
             if at is None and m_or_why.requires_at:
