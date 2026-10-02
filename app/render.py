@@ -33,7 +33,7 @@ from .registry import EffectRegistry
 from .schema import Edl, EffectContext, EffectOutput
 from .subtitles import build_ass, write_srt
 from .utils import (CancelledError, app_dirs, ff_filter_path, find_ffmpeg,
-                    log, resource_path, run_ffmpeg)
+                    filter_complex_file_args, log, resource_path, run_ffmpeg)
 
 CHUNK_CRF = 16
 FINAL_CRF_FALLBACK = 20
@@ -460,8 +460,8 @@ def _render_chunk(source: Path, info: SourceInfo, canvas: Canvas, mode: str,
     args = ["-i", str(source)]
     for p in input_files:
         args += ["-i", p]
-    args += ["-filter_complex_script", str(fg),
-             "-map", "[vout]", "-c:v", "libx264", "-preset", "veryfast",
+    args += filter_complex_file_args(fg)
+    args += ["-map", "[vout]", "-c:v", "libx264", "-preset", "veryfast",
              "-crf", str(CHUNK_CRF), "-pix_fmt", "yuv420p",
              "-r", "30", "-g", "30", "-an", str(cfile)]
     run_ffmpeg(args, cancel_event=cancel_event, cwd=ctx.work_dir)

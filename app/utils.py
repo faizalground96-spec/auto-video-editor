@@ -165,6 +165,40 @@ def find_ffmpeg() -> Path:
     )
 
 
+_ffmpeg_major: int | None = None
+
+
+def ffmpeg_major_version(ffmpeg_bin: Path | None = None) -> int:
+    """Versi mayor ffmpeg (cache). Cth: 9 untuk ffmpeg 9.0.2."""
+    global _ffmpeg_major
+    if _ffmpeg_major is None:
+        binary = str(ffmpeg_bin or find_ffmpeg())
+        try:
+            out = subprocess.run(
+                [binary, "-version"], capture_output=True, text=True,
+                timeout=15,
+            ).stdout
+            # baris pertama: "ffmpeg version 9.0.2-essentials_build ..."
+            import re
+            m = re.search(r"ffmpeg version (\d+)\.", out)
+            _ffmpeg_major = int(m.group(1)) if m else 0
+        except Exception:
+            _ffmpeg_major = 0
+    return _ffmpeg_major
+
+
+def filter_complex_file_args(script_path: str | Path,
+                             ffmpeg_bin: Path | None = None) -> list[str]:
+    """Argumen untuk filtergraph dari file, sesuai versi ffmpeg.
+
+    - ffmpeg >= 9: -filter_complex_script DIHAPUS, pakai sintaks -/filter_complex
+    - ffmpeg < 9: pakai -filter_complex_script (klasik)
+    """
+    if ffmpeg_major_version(ffmpeg_bin) >= 9:
+        return ["-/filter_complex", str(script_path)]
+    return ["-filter_complex_script", str(script_path)]
+
+
 def ff_filter_path(path: str | Path) -> str:
     """Escape path agar aman dipakai di dalam argumen filter FFmpeg.
 
