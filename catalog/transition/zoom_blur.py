@@ -26,7 +26,7 @@ META = {
     "conflicts_with": ["transition.whip"],
     "requires_at": True,
     "requires": {"assets": [], "face": False},
-    "sfx": None,
+    "sfx": "swoosh",
 }
 
 

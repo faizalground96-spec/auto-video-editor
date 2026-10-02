@@ -34,7 +34,7 @@ META = {
     "conflicts_with": ["transition.zoom_blur"],
     "requires_at": True,
     "requires": {"assets": [], "face": False},
-    "sfx": None,
+    "sfx": "swoosh",
 }
 
 

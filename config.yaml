@@ -38,6 +38,10 @@ gemini:
   delete_uploaded_after: true
   review_pass: false      # [P2]
 
+sfx:                       # Tahap 7: trek SFX otomatis + ducking
+  enabled: true            # matikan total via CLI/GUI bila perlu
+  volume: 0.4              # volume dasar bila density tak menyebutkannya
+
 density:                  # anggaran efek "kuat" (META.strong = true)
   calm:       {max_strong_per_10s: 1, min_gap_s: 2.5, sfx: false}
   medium:     {max_strong_per_10s: 3, min_gap_s: 1.5, sfx: true, sfx_volume: 0.30}

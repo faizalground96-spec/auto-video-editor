@@ -29,7 +29,7 @@ META = {
     "conflicts_with": ["text.clean_caption", "text.karaoke_highlight",
                        "text.typewriter", "text.red_keyword"],
     "requires": {"assets": [], "face": False},
-    "sfx": None,
+    "sfx": "pop",
 }
 
 

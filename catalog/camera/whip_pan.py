@@ -27,7 +27,7 @@ META = {
     "conflicts_with": ["camera.punch_in", "camera.slow_zoom"],
     "requires_at": True,
     "requires": {"assets": [], "face": False},
-    "sfx": None,
+    "sfx": "swoosh",
 }
 
 

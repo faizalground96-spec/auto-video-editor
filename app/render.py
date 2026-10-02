@@ -295,14 +295,37 @@ def render_edl(
         if config["output"].get("export_srt"):
             write_srt(ass_events, output.with_suffix(".srt"))
 
+    # -- SFX (Tahap 7) ------------------------------------------------------
+    from .sfx import build_sfx_track, collect_cues
+    sfx_cfg = config.get("sfx", {})
+    density = (config.get("density", {}) or {}).get(
+        (edl.global_.intensity or "medium").lower(), {})
+    sfx_on = bool(sfx_cfg.get("enabled", True)) and bool(
+        density.get("sfx", True))
+    sfx_cues: list[dict] = []
+    sfx_track = None
+    sfx_volume = 0.4
+    if sfx_on and info.has_audio:
+        sfx_cues = collect_cues(edl, registry, words)
+        sfx_volume = float(density.get("sfx_volume",
+                                       sfx_cfg.get("volume", 0.4)))
+        if sfx_cues:
+            sfx_track = build_sfx_track(
+                sfx_cues, info.duration, assets_dir / "sfx",
+                vdir / "sfx_track.wav", volume=sfx_volume,
+                cancel_event=cancel_event)
+            log.info("%d cue SFX -> %s", len(sfx_cues), sfx_track)
+
     _final_pass(chunk_files, source, info, output, ass_path, assets_dir,
-                config, cancel_event)
+                config, cancel_event,
+                sfx_track=sfx_track, sfx_volume=sfx_volume)
 
     # -- QA -------------------------------------------------------------------
     q = QACtx(output=output, source=source, source_info=info, canvas=canvas,
               config={**config, "fonts_dir": str(assets_dir / "fonts")},
               edl=edl, registry=registry, face_track=face_track,
-              smart_crop_curve=curve, ass_path=ass_path, sfx_cues=[])
+              smart_crop_curve=curve, ass_path=ass_path, sfx_cues=sfx_cues)
+    q.sfx_track = sfx_track  # trek SFX mentah (untuk ukur level, Tahap 7)
     report = run_qa(q, vdir)
     return {"output": output, "qa": report, "work_dir": vdir,
             "reframe_mode": mode}
@@ -451,8 +474,15 @@ def _out(filt: str) -> EffectOutput:
 
 def _final_pass(chunk_files: list[Path], source: Path, info: SourceInfo,
                 output: Path, ass_path: Optional[Path], assets_dir: Path,
-                config: dict, cancel_event) -> None:
-    """Gabung chunk (concat demuxer) + bakar ASS + audio -> output."""
+                config: dict, cancel_event,
+                sfx_track: Optional[Path] = None,
+                sfx_volume: float = 0.4) -> None:
+    """Gabung chunk (concat demuxer) + bakar ASS + audio -> output.
+
+    Bila sfx_track diberikan: campur audio asli + SFX dengan ducking
+    (sidechaincompress; ucapan = kunci), lalu amix normalize=0.
+    """
+    from .sfx import ducking_filter
     workdir = output.parent
     lst = workdir / "concat_list.txt"
     lst.write_text("".join(f"file '{p.resolve()}'\n" for p in chunk_files),
@@ -462,19 +492,28 @@ def _final_pass(chunk_files: list[Path], source: Path, info: SourceInfo,
 
     args = ["-f", "concat", "-safe", "0", "-i", str(lst),
             "-i", str(source)]
+    use_sfx = bool(sfx_track and info.has_audio)
+    if use_sfx:
+        args += ["-i", str(sfx_track)]
+
+    vfilter = None
     if ass_path:
         fontsdir = assets_dir / "fonts"
-        args += ["-filter_complex",
-                 f"[0:v]ass='{ff_filter_path(ass_path)}':"
-                 f"fontsdir='{ff_filter_path(fontsdir)}'[vout]",
-                 "-map", "[vout]"]
-    else:
-        args += ["-map", "0:v"]
+        vfilter = (f"[0:v]ass='{ff_filter_path(ass_path)}':"
+                   f"fontsdir='{ff_filter_path(fontsdir)}'[vout]")
+    afilter = ducking_filter(sfx_volume) if use_sfx else None
+    if vfilter or afilter:
+        fc = ";".join(f for f in (vfilter, afilter) if f)
+        args += ["-filter_complex", fc]
+    args += ["-map", "[vout]" if vfilter else "0:v"]
     if info.has_audio:
-        args += ["-map", "1:a"]
-        # Tahap 4: tanpa SFX & tanpa pemetaan waktu -> copy bila AAC
-        args += ["-c:a", "copy"] if info.audio_codec == "aac" \
-            else ["-c:a", "aac", "-b:a", "192k"]
+        args += ["-map", "[aout]" if use_sfx else "1:a"]
+        # Dengan SFX audio harus di-encode ulang; tanpa SFX copy bila AAC.
+        if use_sfx:
+            args += ["-c:a", "aac", "-b:a", "192k"]
+        else:
+            args += ["-c:a", "copy"] if info.audio_codec == "aac" \
+                else ["-c:a", "aac", "-b:a", "192k"]
     else:
         args += ["-an"]
 

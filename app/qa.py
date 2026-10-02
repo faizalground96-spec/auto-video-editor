@@ -32,6 +32,7 @@ class QACtx:
     smart_crop_curve: Optional[dict] = None
     ass_path: Optional[Path] = None
     sfx_cues: list = field(default_factory=list)
+    sfx_track: Optional[Path] = None  # trek SFX mentah (pra-duck), Tahap 7
 
 
 def _check(name: str, status: str, detail: str = "", **metrics) -> dict:
@@ -107,14 +108,91 @@ def check_audio(q: QACtx, tmp: Path) -> dict:
     if ddur > 0.020:
         return _check("audio", "fail", f"selisih durasi audio {ddur*1000:.0f}ms")
     if q.sfx_cues:
-        return _check("audio_sfx", "skip",
-                      "cek SFX aktif (Tahap 7)")  # diimplementasi Tahap 7
+        return _check_audio_sfx(q, tmp)
     corr = _audio_corr(q.source, q.output, tmp)
     need = float(q.config.get("qa", {}).get("max_audio_corr_min", 0.99))
     if corr < need:
         return _check("audio", "fail",
                       f"korelasi audio {corr:.4f} < {need}", corr=corr)
     return _check("audio", "pass", f"korelasi {corr:.4f}", corr=corr)
+
+
+# ---------------------------------------------------------------------------
+# 2b. Audio dengan SFX (Tahap 7)
+# ---------------------------------------------------------------------------
+def _check_audio_sfx(q: QACtx, tmp: Path) -> dict:
+    """Dua uji (plan Tahap 7):
+    1. Ucapan tetap jelas: level sumber vs hasil di jendela TANPA SFX
+       harus dalam ±0,5 dB.
+    2. SFX tidak mendominasi: di jendela ber-SFX, trek SFX (pra-duck,
+       konservatif — ducking membuatnya lebih pelan lagi) harus
+       >= 10 dB di bawah ucapan.
+    """
+    from .sfx import extract_wav, rms_db
+    src_wav = extract_wav(q.source, tmp / "qa_src.wav")
+    out_wav = extract_wav(q.output, tmp / "qa_out.wav")
+    dur = q.source_info.duration
+    cues = sorted(q.sfx_cues, key=lambda c: c["t"])
+
+    # daerah termask SFX: [t, t+1.2]
+    masked = [(c["t"], c["t"] + 1.2) for c in cues]
+
+    def in_mask(t: float) -> bool:
+        return any(a <= t < b for a, b in masked)
+
+    # --- uji 1: jendela tanpa SFX -----------------------------------------
+    gaps: list[tuple[float, float]] = []
+    bounds = sorted({0.0, dur} | {b for _, b in masked} | {a for a, _ in masked})
+    for a, b in zip(bounds[:-1], bounds[1:]):
+        mid_a, mid_b = a, b
+        # potong margin mask
+        if any(x[0] <= a < x[1] for x in masked):
+            continue
+        if b - a >= 0.5:
+            gaps.append((a, b))
+    diffs: list[float] = []
+    for a, b in gaps[:3]:
+        w = min(2.0, b - a)
+        s = a + (b - a - w) / 2
+        ls = rms_db(src_wav, s, s + w)
+        lo = rms_db(out_wav, s, s + w)
+        if ls == float("-inf") or lo == float("-inf"):
+            continue
+        diffs.append(abs(lo - ls))
+    if not diffs:
+        return _check("audio_sfx", "fail", "tak ada jendela tanpa SFX")
+    max_diff = max(diffs)
+    if max_diff > 0.5:
+        return _check("audio_sfx", "fail",
+                      f"level ucapan berubah {max_diff:.2f} dB (>0,5)",
+                      max_diff_db=round(max_diff, 2))
+
+    # --- uji 2: SFX >= 10 dB di bawah ucapan -------------------------------
+    margins: list[float] = []
+    for c in cues:
+        t = c["t"]
+        if q.sfx_track and Path(q.sfx_track).is_file():
+            lsfx = rms_db(Path(q.sfx_track), t, t + 0.6)
+        else:
+            continue
+        lsp = rms_db(src_wav, t, t + 0.6)
+        if lsfx == float("-inf") or lsp == float("-inf"):
+            continue
+        margins.append(lsp - lsfx)
+    if not margins:
+        return _check("audio_sfx", "fail", "tak ada jendela SFX terukur",
+                      max_diff_db=round(max_diff, 2))
+    min_margin = min(margins)
+    detail = (f"ucapan ±{max_diff:.2f} dB di {len(diffs)} jendela bersih; "
+              f"SFX min {min_margin:.1f} dB di bawah ucapan "
+              f"({len(margins)} cue)")
+    if min_margin < 10.0:
+        return _check("audio_sfx", "fail", detail + " (<10 dB)",
+                      max_diff_db=round(max_diff, 2),
+                      min_sfx_margin_db=round(min_margin, 1))
+    return _check("audio_sfx", "pass", detail,
+                  max_diff_db=round(max_diff, 2),
+                  min_sfx_margin_db=round(min_margin, 1))
 
 
 # ---------------------------------------------------------------------------

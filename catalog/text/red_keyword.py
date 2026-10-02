@@ -25,7 +25,7 @@ META = {
     "conflicts_with": ["text.clean_caption", "text.pop_in_word",
                        "text.karaoke_highlight", "text.typewriter"],
     "requires": {"assets": [], "face": False},
-    "sfx": None,
+    "sfx": "pop",
 }
 
 
