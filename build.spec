@@ -19,6 +19,14 @@ datas = [
     (str(ROOT / "assets"), "assets"),
     (str(ROOT / "config.yaml"), "."),
 ]
+# faster-whisper: model ONNX silero VAD (dipakai untuk deteksi jeda)
+try:
+    import faster_whisper
+    _fw_assets = Path(faster_whisper.__file__).parent / "assets"
+    if _fw_assets.is_dir():
+        datas.append((str(_fw_assets), "faster_whisper/assets"))
+except Exception:
+    pass
 # ffmpeg.exe + ffprobe.exe (Windows) bila sudah diunduh ke bin/
 for _exe in ("ffmpeg.exe", "ffprobe.exe"):
     _p = ROOT / "bin" / _exe
