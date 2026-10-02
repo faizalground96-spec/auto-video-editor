@@ -30,7 +30,7 @@ from .probe import SourceInfo, probe
 from .qa import QACtx, run_qa
 from .reframe import ensure_face_track, smart_crop_curve
 from .registry import EffectRegistry
-from .schema import Edl, EffectContext
+from .schema import Edl, EffectContext, EffectOutput
 from .subtitles import build_ass, write_srt
 from .utils import (CancelledError, app_dirs, ff_filter_path, find_ffmpeg,
                     log, resource_path, run_ffmpeg)
@@ -334,57 +334,119 @@ def _render_chunk(source: Path, info: SourceInfo, canvas: Canvas, mode: str,
                   registry: EffectRegistry, ctx: EffectContext, edl: Edl,
                   seg, s0: float, s1: float, cfile: Path, config: dict,
                   cancel_event) -> None:
-    """Render satu chunk video (tanpa audio)."""
-    W, H = canvas.width, canvas.height
-    segs = [f"[0:v]trim=start={s0:.3f}:end={s1:.3f},setpts=PTS-STARTPTS,"
-            f"fps=30,setsar=1,format=yuv420p"]
-    # Catatan: rotasi metadata ditangani autorotate bawaan ffmpeg
-    # (default aktif) -> frame yang masuk filter SUDAH terotasi benar,
-    # konsisten dengan app.probe. Jangan tambah transpose manual.
-    segs[0] += "[vbase];"
+    """Render satu chunk video (tanpa audio).
 
-    # reframe
+    Kontrak filter efek:
+    - reframe (selalu pertama): string berlabel penuh [vbase] -> [vref].
+    - efek lain: tiap string boleh memakai placeholder [CUR] (label video
+      saat ini) dan [NEXT] (label keluaran); bila tak ada label sama
+      sekali, dibungkus otomatis [cur]...[nxt].
+    - [INPUTi] merujuk ke extra_inputs efek itu (indeks lokal).
+    """
+    W, H = canvas.width, canvas.height
+
+    # Kumpulkan semua build dulu (dibutuhkan untuk needs_source & inputs).
+    built: list[EffectOutput] = []
     if mode == "none":
         if (info.width, info.height) == (W, H):
-            segs.append("[vbase]null[vref];")
+            built.append(_out("[vbase]null[vref]"))
         else:
-            segs.append(f"[vbase]scale={W}:{H}:"
-                        f"force_original_aspect_ratio=increase,"
-                        f"crop={W}:{H}[vref];")
+            built.append(_out(
+                f"[vbase]scale={W}:{H}:force_original_aspect_ratio=increase,"
+                f"crop={W}:{H}[vref]"))
     else:
         out = registry.build(f"reframe.{mode}", ctx, None, {})
         assert len(out.video_filters) == 1 and \
             "[vbase]" in out.video_filters[0], \
             f"kontrak reframe dilanggar: {mode}"
-        segs.append(out.video_filters[0] + ";")
-
-    cur = "vref"
-    # grade global
+        built.append(out)
     if edl.global_.grade:
         g = edl.global_.grade
-        for f in registry.build(g.id, ctx, None, g.params).video_filters:
-            nxt = cur + "g"
-            segs.append(f"[{cur}]{f}[{nxt}];")
-            cur = nxt
-    # efek segmen (waktu lokal: at - s0)
+        built.append(registry.build(g.id, ctx, None, g.params))
     if seg:
-        for k, e in enumerate(sorted(
-                seg.effects, key=lambda x: x.at or 0.0)):
+        for e in sorted(seg.effects, key=lambda x: x.at or 0.0):
             at = None if e.at is None else e.at - s0
-            for f in registry.build(
-                    e.id, ctx, at, e.params).video_filters:
-                nxt = f"{cur}e{k}"
+            built.append(registry.build(e.id, ctx, at, e.params))
+
+    # Bila ada efek butuh sumber mentah: split [0:v] dulu.
+    needy = [o for o in built if o.needs_source]
+    if needy:
+        vsrc_labels = "".join(f"[vsrc{i}]" for i in range(len(needy)))
+        segs = [f"[0:v]split={1 + len(needy)}[vin]{vsrc_labels};",
+                f"[vin]trim=start={s0:.3f}:end={s1:.3f},"
+                f"setpts=PTS-STARTPTS,fps=30,setsar=1,format=yuv420p"]
+    else:
+        segs = [f"[0:v]trim=start={s0:.3f}:end={s1:.3f},setpts=PTS-STARTPTS,"
+                f"fps=30,setsar=1,format=yuv420p"]
+    # Catatan: rotasi metadata ditangani autorotate bawaan ffmpeg
+    # (default aktif) -> frame yang masuk filter SUDAH terotasi benar,
+    # konsisten dengan app.probe. Jangan tambah transpose manual.
+    segs[1 if needy else 0] += "[vbase];"
+
+    # Indeks input global.
+    input_files: list[str] = []
+    for out in built:
+        for p in out.extra_inputs:
+            if p not in input_files:
+                input_files.append(p)
+    base_of: list[int] = []  # offset input global per efek
+    off = 0
+    for out in built:
+        base_of.append(off)
+        off += len(out.extra_inputs)
+
+    # Rangkai filter.
+    cur = "vref"
+    counter = 0
+    needy_idx = 0
+    for out, base in zip(built, base_of):
+        # [VSRC] -> label salinan sumber milik efek ini
+        vsrc_label = None
+        if out.needs_source:
+            vsrc_label = f"[vsrc{needy_idx}]"
+            needy_idx += 1
+        for f in out.video_filters:
+            # [INPUTi] lokal -> [N:v] global
+            def _repl(m, _base=base):
+                return f"[{_base + 1 + int(m.group(1))}:v]"
+            f = re.sub(r"\[INPUT(\d+)\]", _repl, f)
+            if vsrc_label:
+                f = f.replace("[VSRC]", vsrc_label)
+            if "[CUR]" in f or "[NEXT]" in f:
+                nxt = f"n{counter}"
+                counter += 1
+                if "[CUR]" not in f:
+                    # efek tak pakai input: konsumsi label lama agar
+                    # tak menggantung (error binding filtergraph)
+                    segs.append(f"[{cur}]nullsink;")
+                f = f.replace("[CUR]", f"[{cur}]").replace("[NEXT]",
+                                                           f"[{nxt}]")
+                segs.append(f + ";")
+                cur = nxt
+            elif "[" in f:
+                segs.append(f + ";")  # sudah berlabel penuh (reframe)
+            else:
+                nxt = f"n{counter}"
+                counter += 1
                 segs.append(f"[{cur}]{f}[{nxt}];")
                 cur = nxt
     segs.append(f"[{cur}]null[vout]")
 
     fg = ctx.work_dir / f"chunk_{s0:.2f}.txt"
     fg.write_text("\n".join(segs), encoding="utf-8")
-    run_ffmpeg(["-i", str(source), "-filter_complex_script", str(fg),
-                "-map", "[vout]", "-c:v", "libx264", "-preset", "veryfast",
-                "-crf", str(CHUNK_CRF), "-pix_fmt", "yuv420p",
-                "-r", "30", "-g", "30", "-an", str(cfile)],
-               cancel_event=cancel_event, cwd=ctx.work_dir)
+    args = ["-i", str(source)]
+    for p in input_files:
+        args += ["-i", p]
+    args += ["-filter_complex_script", str(fg),
+             "-map", "[vout]", "-c:v", "libx264", "-preset", "veryfast",
+             "-crf", str(CHUNK_CRF), "-pix_fmt", "yuv420p",
+             "-r", "30", "-g", "30", "-an", str(cfile)]
+    run_ffmpeg(args, cancel_event=cancel_event, cwd=ctx.work_dir)
+
+
+def _out(filt: str) -> EffectOutput:
+    """EffectOutput satu filter (untuk reframe 'none' internal)."""
+    return EffectOutput(video_filters=[filt])
 
 
 def _final_pass(chunk_files: list[Path], source: Path, info: SourceInfo,

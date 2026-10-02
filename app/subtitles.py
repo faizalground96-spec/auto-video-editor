@@ -58,10 +58,14 @@ def chunk_captions(words: list[dict], canvas: Canvas, config: dict,
     events = []
     for i in range(0, len(lines), max_lines):
         grp = lines[i:i + max_lines]
+        ev_words = [w for g in grp for w in g[0]]
         events.append({
             "start": grp[0][0][0]["start"],
             "end": grp[-1][0][-1]["end"],
             "lines": [t for _, t in grp],
+            # kata per baris (untuk pewarnaan per kata)
+            "line_words": [[w.get("i") for w in g[0]] for g in grp],
+            "words": ev_words,
         })
     return events
 
@@ -163,6 +167,30 @@ def pick_caption_side(lines: list[str], font_path: Path, font_px: int,
     if ob > 0.2 and ot < ob:
         return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Helper untuk efek teks (dipakai catalog/text/*.py)
+# ---------------------------------------------------------------------------
+def segment_words(ctx) -> list[dict]:
+    """Kata dalam rentang segmen (bila efek terpasang di segmen),
+    atau semua kata bila gaya teks global."""
+    words = ctx.words or []
+    if ctx.seg_end > ctx.seg_start:
+        return [w for w in words
+                if w["end"] > ctx.seg_start and w["start"] < ctx.seg_end]
+    return words
+
+
+def emphasis_set(params: dict) -> set[int]:
+    """Indeks kata (words.json `i`) yang diberi penekanan."""
+    return set(int(x) for x in params.get("emphasis_idx", []))
+
+
+# warna ASS (BGR + alpha)
+RED = "&H001409E5&"      # merah #E50914
+YELLOW = "&H0000C8FF&"   # kuning
+WHITE = "&H00FFFFFF&"
 
 
 # ---------------------------------------------------------------------------

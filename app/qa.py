@@ -257,7 +257,9 @@ def check_text(q: QACtx) -> dict:
     bad = []
     for ev in evs:
         lines = ev["text"].split("\\N")
-        w = max(measure_text(t, font_path, font_px)[0] for t in lines)
+        # buang tag override ASS {\...} sebelum ukur
+        clean = [re.sub(r"\{[^}]*\}", "", t) for t in lines]
+        w = max(measure_text(t, font_path, font_px)[0] for t in clean)
         h = int(len(lines) * font_px * 1.2)
         x = (q.canvas.width - w) // 2
         if ev["style"] == "CaptionTop":
@@ -266,7 +268,7 @@ def check_text(q: QACtx) -> dict:
             y = q.canvas.h(cap["anchor_y"][q.canvas.aspect]) - h // 2
         if not (x >= sx and y >= sy and x + w <= sx + sw and
                 y + h <= sy + sh):
-            bad.append(f"keluar safe area: {lines[0][:20]}")
+            bad.append(f"keluar safe area: {clean[0][:20]}")
         # tutup wajah > 20%?
         if q.face_track:
             tmid = (ev["start"] + ev["end"]) / 2
@@ -275,7 +277,7 @@ def check_text(q: QACtx) -> dict:
                 ix = max(0, min(x + w, f[0] + f[2]) - max(x, f[0]))
                 iy = max(0, min(y + h, f[1] + f[3]) - max(y, f[1]))
                 if (ix * iy) / max(w * h, 1) > 0.2:
-                    bad.append(f"menutup wajah >20%: {lines[0][:20]}")
+                    bad.append(f"menutup wajah >20%: {clean[0][:20]}")
                     break
         if len(bad) > 5:
             break

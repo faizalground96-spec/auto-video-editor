@@ -194,6 +194,11 @@ class EffectRegistry:
                 elif spec.type == "choice":
                     if spec.choices and v not in spec.choices:
                         v = spec.default
+                elif spec.type == "list":
+                    if not isinstance(v, (list, tuple)):
+                        v = spec.default
+                    else:
+                        v = list(v)
             except (ValueError, TypeError):
                 v = spec.default
             clean[name] = v

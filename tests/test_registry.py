@@ -39,13 +39,13 @@ def _write_dummy(d: Path, eid: str, cat: str, status="stable",
     return fp
 
 
-def test_load_six_effects():
+def test_load_21_effects():
     reg = EffectRegistry(CATALOG, ASSETS).load()
     assert reg.errors == []
     ids = reg.all_ids()
-    assert ids == ["camera.punch_in", "grade.clean_bright",
-                   "reframe.blur_fill", "reframe.fit_letterbox",
-                   "reframe.smart_crop", "text.clean_caption"]
+    assert len(ids) == 21
+    assert "text.pop_in_word" in ids
+    assert "insert.face_grid" in ids  # beta
 
 
 def test_broken_file_does_not_crash(tmp_path):

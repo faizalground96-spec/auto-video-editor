@@ -18,7 +18,7 @@ from .canvas import CANVAS_SPECS
 # META efek (satu file .py di catalog/)
 # ---------------------------------------------------------------------------
 class ParamSpec(BaseModel):
-    type: Literal["float", "int", "bool", "str", "choice"]
+    type: Literal["float", "int", "bool", "str", "choice", "list"]
     min: Optional[float] = None
     max: Optional[float] = None
     default: Any = None
@@ -34,7 +34,7 @@ class EffectMeta(BaseModel):
     id: str
     category: Literal["text", "camera", "grade", "transition", "overlay",
                       "layout", "reframe", "insert", "closing", "sfx"]
-    status: Literal["stable", "experimental", "disabled"] = "stable"
+    status: Literal["stable", "beta", "experimental", "disabled"] = "stable"
     version: int = 1
     description: str = ""
     good_for: list[str] = Field(default_factory=list)
@@ -90,8 +90,16 @@ class EffectOutput:
     """Dikembalikan build(): potongan filter & event untuk renderer."""
     video_filters: list[str] = field(default_factory=list)
     ass_events: list[dict] = field(default_factory=list)
+    # File input tambahan (path absolut). Di filter, rujuk sebagai
+    # [INPUT0], [INPUT1], ... (indeks ke list ini); renderer mengganti
+    # dengan label [1:v], [2:v], ... sesuai urutan global.
     extra_inputs: list[str] = field(default_factory=list)
     sfx_cues: list[dict] = field(default_factory=list)
+    # True bila efek butuh akses video sumber mentah (selain [CUR]).
+    # Di filter, pakai placeholder [VSRC]; renderer mengganti dengan
+    # label salinan sumber. (Satu [VSRC] per efek; split sendiri bila
+    # butuh >1.)
+    needs_source: bool = False
 
 
 # ---------------------------------------------------------------------------
