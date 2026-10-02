@@ -86,11 +86,13 @@ if not exist "%BIN%\ffmpeg.exe" (
         call :log "Hapus ffmpeg_dl.zip dan coba lagi."
         goto :fail
     )
+    set "FFFOUND="
     for /r "%ROOT%ffmpeg_tmp" %%F in (ffmpeg.exe) do (
-        copy "%%F" "%BIN%\ffmpeg.exe" >> "%LOG%" 2>&1
-        goto :ffdone
+        if not defined FFFOUND (
+            copy "%%F" "%BIN%\ffmpeg.exe" >> "%LOG%" 2>&1
+            set "FFFOUND=1"
+        )
     )
-    :ffdone
     rmdir /s /q "%ROOT%ffmpeg_tmp" 2>nul
     del "%ROOT%ffmpeg_dl.zip" 2>nul
     if not exist "%BIN%\ffmpeg.exe" (
