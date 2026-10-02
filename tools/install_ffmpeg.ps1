@@ -27,17 +27,25 @@ Write-Host "Mengekstrak arsip ..."
 if (Test-Path -LiteralPath $tmpDir) { Remove-Item -LiteralPath $tmpDir -Recurse -Force }
 Expand-Archive -LiteralPath $zipPath -DestinationPath $tmpDir -Force
 
-Write-Host "Mencari ffmpeg.exe di hasil ekstrak ..."
-$found = Get-ChildItem -LiteralPath $tmpDir -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
-if (-not $found) {
+Write-Host "Mencari ffmpeg.exe dan ffprobe.exe di hasil ekstrak ..."
+$ffmpeg = Get-ChildItem -LiteralPath $tmpDir -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+$ffprobe = Get-ChildItem -LiteralPath $tmpDir -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
+if (-not $ffmpeg) {
     $listing = Get-ChildItem -LiteralPath $tmpDir -Recurse | Select-Object -First 20 | ForEach-Object { $_.FullName }
     Write-Host "Isi arsip (20 pertama):"
     $listing | ForEach-Object { Write-Host "  $_" }
     throw "ffmpeg.exe tidak ditemukan di dalam arsip."
 }
 
-Write-Host "Menyalin $($found.FullName) ke $DestExe ..."
-Copy-Item -LiteralPath $found.FullName -Destination $DestExe -Force
+Write-Host "Menyalin $($ffmpeg.FullName) ke $DestExe ..."
+Copy-Item -LiteralPath $ffmpeg.FullName -Destination $DestExe -Force
+if ($ffprobe) {
+    $destProbe = Join-Path (Split-Path -Parent $DestExe) "ffprobe.exe"
+    Write-Host "Menyalin $($ffprobe.FullName) ke $destProbe ..."
+    Copy-Item -LiteralPath $ffprobe.FullName -Destination $destProbe -Force
+} else {
+    Write-Host "PERINGATAN: ffprobe.exe tidak ada di arsip, lewati."
+}
 
 Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue

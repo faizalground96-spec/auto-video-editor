@@ -19,10 +19,11 @@ datas = [
     (str(ROOT / "assets"), "assets"),
     (str(ROOT / "config.yaml"), "."),
 ]
-# ffmpeg.exe (Windows) bila sudah diunduh ke bin/
-ffexe = ROOT / "bin" / "ffmpeg.exe"
-if ffexe.is_file():
-    datas.append((str(ffexe), "bin"))
+# ffmpeg.exe + ffprobe.exe (Windows) bila sudah diunduh ke bin/
+for _exe in ("ffmpeg.exe", "ffprobe.exe"):
+    _p = ROOT / "bin" / _exe
+    if _p.is_file():
+        datas.append((str(_p), "bin"))
 
 # -- hidden imports (efek dimuat dinamis via importlib) ----------------------
 hidden = [
