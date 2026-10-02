@@ -16,17 +16,17 @@ call :log "ROOT=%ROOT%"
 REM --- 1. cek Python -------------------------------------------------------
 call :log "--- Cek Python ---"
 py -3.11 --version >nul 2>&1
-if !ERRORLEVEL!==0 (
+if not errorlevel 1 (
     set "PY=py -3.11"
     call :log "Python: py -3.11"
 ) else (
     py -3.12 --version >nul 2>&1
-    if !ERRORLEVEL!==0 (
+    if not errorlevel 1 (
         set "PY=py -3.12"
         call :log "Python: py -3.12"
     ) else (
         python --version >nul 2>&1
-        if !ERRORLEVEL!==0 (
+        if not errorlevel 1 (
             set "PY=python"
             call :log "Python: python (fallback)"
         ) else (
@@ -41,7 +41,7 @@ call :log "--- venv + pip install ---"
 if not exist "%VENV%\Scripts\python.exe" (
     call :log "Membuat venv..."
     %PY% -m venv "%VENV%" >> "%LOG%" 2>&1
-    if !ERRORLEVEL! neq 0 (
+    if errorlevel 1 (
         call :log "GALAT: gagal membuat venv. Lihat build.log."
         goto :fail
     )
@@ -49,7 +49,7 @@ if not exist "%VENV%\Scripts\python.exe" (
 call :log "pip install -r requirements.txt (ini lama, tunggu) ..."
 "%VENV%\Scripts\python.exe" -m pip install --upgrade pip >> "%LOG%" 2>&1
 "%VENV%\Scripts\python.exe" -m pip install -r "%ROOT%requirements.txt" >> "%LOG%" 2>&1
-if !ERRORLEVEL! neq 0 (
+if errorlevel 1 (
     call :log "GALAT: pip install gagal. Lihat build.log."
     goto :fail
 )
@@ -68,7 +68,7 @@ if not exist "%BIN%\ffmpeg.exe" (
     )
     call :log "URL: !FFURL!"
     powershell -NoProfile -Command "Invoke-WebRequest -Uri '!FFURL!' -OutFile '%ROOT%ffmpeg_dl.zip' -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'" >> "%LOG%" 2>&1
-    if !ERRORLEVEL! neq 0 (
+    if errorlevel 1 (
         call :log "GALAT: unduhan ffmpeg gagal."
         call :log "Silakan unduh manual dari https://www.gyan.dev/ffmpeg/builds/"
         call :log "lalu letakkan ffmpeg.exe di: %BIN%\ffmpeg.exe"
@@ -81,7 +81,7 @@ if not exist "%BIN%\ffmpeg.exe" (
         goto :fail
     )
     powershell -NoProfile -Command "Expand-Archive -Path '%ROOT%ffmpeg_dl.zip' -DestinationPath '%ROOT%ffmpeg_tmp' -Force" >> "%LOG%" 2>&1
-    if !ERRORLEVEL! neq 0 (
+    if errorlevel 1 (
         call :log "GALAT: gagal mengekstrak arsip ffmpeg (file rusak/tidak lengkap)."
         call :log "Hapus ffmpeg_dl.zip dan coba lagi."
         goto :fail
@@ -108,7 +108,7 @@ REM --- 4. pyinstaller --------------------------------------------------------
 call :log "--- pyinstaller (ini lama, tunggu) ---"
 "%VENV%\Scripts\python.exe" -m PyInstaller --version >> "%LOG%" 2>&1
 "%VENV%\Scripts\pyinstaller.exe" "%ROOT%build.spec" --noconfirm >> "%LOG%" 2>&1
-if !ERRORLEVEL! neq 0 (
+if errorlevel 1 (
     call :log "GALAT: pyinstaller gagal. Lihat build.log."
     goto :fail
 )
@@ -121,7 +121,8 @@ if not exist "%CLIEXE%" (
     goto :fail
 )
 "%CLIEXE%" --self-test >> "%LOG%" 2>&1
-set "ST=!ERRORLEVEL!"
+set "ST=0"
+if errorlevel 1 set "ST=1"
 findstr /c:"[OK]" /c:"[GAGAL]" /c:"SELF-TEST" "%LOG%"
 if %ST% neq 0 (
     call :log "PERINGATAN: self-test GAGAL — build bermasalah. Lihat build.log."
