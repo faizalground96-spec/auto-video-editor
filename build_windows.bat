@@ -81,9 +81,15 @@ if not exist "%BIN%\ffmpeg.exe" (
 
 REM --- 4. pyinstaller --------------------------------------------------------
 call :log "--- pyinstaller (ini lama, tunggu) ---"
+REM Pindah ke ROOT dulu agar folder dist/ & build/ selalu di lokasi yang benar,
+REM tidak tergantung posisi cmd saat bat dijalankan.
+pushd "%ROOT%"
 "%VENV%\Scripts\python.exe" -m PyInstaller --version >> "%LOG%" 2>&1
-"%VENV%\Scripts\pyinstaller.exe" "%ROOT%build.spec" --noconfirm >> "%LOG%" 2>&1
-if errorlevel 1 (
+"%VENV%\Scripts\pyinstaller.exe" "%ROOT%build.spec" --noconfirm --distpath "%ROOT%dist" --workpath "%ROOT%build" >> "%LOG%" 2>&1
+set "PIERR=0"
+if errorlevel 1 set "PIERR=1"
+popd
+if "%PIERR%"=="1" (
     call :log "GALAT: pyinstaller gagal. Lihat build.log."
     goto :fail
 )
