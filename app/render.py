@@ -501,13 +501,18 @@ def _final_pass(chunk_files: list[Path], source: Path, info: SourceInfo,
         fontsdir = assets_dir / "fonts"
         vfilter = (f"[0:v]ass='{ff_filter_path(ass_path)}':"
                    f"fontsdir='{ff_filter_path(fontsdir)}'[vout]")
-    afilter = ducking_filter(sfx_volume) if use_sfx else None
+    afilter = None
+    if use_sfx:
+        # atrim: jaga durasi audio tepat = durasi sumber (QA toleransi 20ms)
+        afilter = (ducking_filter(sfx_volume) +
+                   f";[aout]atrim=duration={info.duration:.3f}[aout2]")
+        # ganti label akhir
     if vfilter or afilter:
         fc = ";".join(f for f in (vfilter, afilter) if f)
         args += ["-filter_complex", fc]
     args += ["-map", "[vout]" if vfilter else "0:v"]
     if info.has_audio:
-        args += ["-map", "[aout]" if use_sfx else "1:a"]
+        args += ["-map", "[aout2]" if use_sfx else "1:a"]
         # Dengan SFX audio harus di-encode ulang; tanpa SFX copy bila AAC.
         if use_sfx:
             args += ["-c:a", "aac", "-b:a", "192k"]

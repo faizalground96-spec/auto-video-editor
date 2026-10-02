@@ -169,6 +169,8 @@ class EmphasisWord(BaseModel):
     """Kata penekanan: idx -> words.json (waktu diisi validator)."""
     idx: int
     word: str = ""
+    start: float = 0.0
+    end: float = 0.0
 
 
 class ClosingSpec(BaseModel):

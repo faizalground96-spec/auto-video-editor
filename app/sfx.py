@@ -31,12 +31,17 @@ KNOWN_SFX = ("swoosh", "boom", "pop", "riser")
 def collect_cues(edl: Any, registry, words: list[dict]) -> list[dict]:
     """Kembalikan [{'t': float, 'sfx': str, 'why': str}]."""
     cues: list[dict] = []
-    # waktu emphasis per segmen (dari EDL tervalidasi)
+    # waktu emphasis per segmen (dari EDL tervalidasi; dukung dict/objek)
+    def _ew_start(ew) -> float:
+        return float(ew["start"] if isinstance(ew, dict) else ew.start)
+
     emph_by_seg: dict[int, list[float]] = {}
     for si, seg in enumerate(edl.segments):
+        s_start = seg.start if not isinstance(seg, dict) else seg["start"]
+        s_end = seg.end if not isinstance(seg, dict) else seg["end"]
         emph_by_seg[si] = [
-            float(ew["start"]) for ew in (edl.emphasis_words or [])
-            if seg.start <= float(ew["start"]) < seg.end
+            _ew_start(ew) for ew in (edl.emphasis_words or [])
+            if s_start <= _ew_start(ew) < s_end
         ]
 
     for si, seg in enumerate(edl.segments):
