@@ -248,6 +248,22 @@ def run_ffmpeg(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         cwd=str(cwd) if cwd else None, text=True, bufsize=1,
     )
+    # Drain stderr di thread terpisah agar tidak deadlock: jika ffmpeg menulis
+    # banyak ke stderr sementara kita sibuk membaca stdout, buffer pipe penuh
+    # dan ffmpeg macet menunggu (terjadi di self-test Windows/ffmpeg 9).
+    stderr_lines: list[str] = []
+
+    def _drain_stderr() -> None:
+        try:
+            assert proc.stderr is not None
+            for eline in proc.stderr:
+                stderr_lines.append(eline)
+        except Exception:
+            pass
+
+    assert proc.stderr is not None
+    t = threading.Thread(target=_drain_stderr, daemon=True)
+    t.start()
     out_time = 0.0
     stderr_tail: list[str] = []
     try:
@@ -266,14 +282,16 @@ def run_ffmpeg(
                     on_progress(out_time)
             elif line == "progress=end":
                 break
-        _, stderr = proc.communicate(timeout=timeout)
-        stderr_tail = (stderr or "").splitlines()[-30:]
+        proc.wait(timeout=timeout)
+        t.join(timeout=10)
+        stderr_tail = "".join(stderr_lines).splitlines()[-30:]
     except CancelledError:
         raise
     except Exception:
         proc.kill()
-        _, stderr = proc.communicate()
-        stderr_tail = (stderr or "").splitlines()[-30:]
+        proc.wait()
+        t.join(timeout=10)
+        stderr_tail = "".join(stderr_lines).splitlines()[-30:]
         raise
     if proc.returncode != 0:
         log.error("ffmpeg gagal (rc=%s):\n%s",
