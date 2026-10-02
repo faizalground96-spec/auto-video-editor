@@ -7,7 +7,8 @@ Gemini** (topik, mood, tempo) → **rencana edit (EDL)** → **render FFmpeg**
 
 ## Cara build (Windows)
 
-1. Pasang Python 3.11 dari python.org (centang "Add to PATH").
+1. Pasang Python 3.11 atau 3.12 dari python.org (centang "Add to PATH").
+   Jangan pakai 3.13+ — beberapa library belum mendukung.
 2. Buka `cmd` di folder proyek, jalankan:
    ```
    build_windows.bat

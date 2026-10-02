@@ -18,14 +18,20 @@ if %ERRORLEVEL%==0 (
     set "PY=py -3.11"
     call :log "Python: py -3.11"
 ) else (
-    python --version >nul 2>&1
+    py -3.12 --version >nul 2>&1
     if %ERRORLEVEL%==0 (
-        set "PY=python"
-        call :log "Python: python (fallback)"
+        set "PY=py -3.12"
+        call :log "Python: py -3.12"
     ) else (
-        call :log "GALAT: Python 3.11 tidak ditemukan."
-        echo GALAT: Python 3.11 tidak ditemukan. Pasang dari python.org. | tee -a "%LOG%"
-        exit /b 1
+        python --version >nul 2>&1
+        if %ERRORLEVEL%==0 (
+            set "PY=python"
+            call :log "Python: python (fallback)"
+        ) else (
+            call :log "GALAT: Python tidak ditemukan."
+            echo GALAT: Python 3.11 atau 3.12 tidak ditemukan. Pasang dari python.org. | tee -a "%LOG%"
+            exit /b 1
+        )
     )
 )
 
