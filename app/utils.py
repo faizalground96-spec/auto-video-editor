@@ -143,12 +143,16 @@ def app_dirs() -> dict[str, Path]:
 def find_ffmpeg() -> Path:
     """Cari ffmpeg: bin/ffmpeg(.exe) dulu (bundel Windows), lalu PATH."""
     candidates = []
+    name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
     if is_frozen():
         exe_dir = Path(sys.executable).resolve().parent
+        # PyInstaller one-folder: datas ada di _internal/ (sys._MEIPASS),
+        # tapi cek juga di samping exe untuk jaga-jaga.
+        candidates.append(Path(sys._MEIPASS) / "bin" / name)  # type: ignore[attr-defined]
+        candidates.append(exe_dir / "bin" / name)
     else:
         exe_dir = Path(__file__).resolve().parent.parent
-    name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
-    candidates.append(exe_dir / "bin" / name)
+        candidates.append(exe_dir / "bin" / name)
     which = shutil.which("ffmpeg")
     if which:
         candidates.append(Path(which))
