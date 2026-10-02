@@ -57,7 +57,7 @@ if errorlevel 1 (
 REM --- 3. ffmpeg.exe --------------------------------------------------------
 call :log "--- ffmpeg ---"
 if not exist "%BIN%\ffmpeg.exe" (
-    call :log "ffmpeg.exe belum ada, mengunduh..."
+    call :log "ffmpeg.exe belum ada, mengunduh & memasang via PowerShell..."
     mkdir "%BIN%" 2>nul
     set "FFURL="
     for /f "usebackq delims=" %%L in ("%ROOT%tools\ffmpeg_win.txt") do (
@@ -67,36 +67,11 @@ if not exist "%BIN%\ffmpeg.exe" (
         )
     )
     call :log "URL: !FFURL!"
-    powershell -NoProfile -Command "Invoke-WebRequest -Uri '!FFURL!' -OutFile '%ROOT%ffmpeg_dl.zip' -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'" >> "%LOG%" 2>&1
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\install_ffmpeg.ps1" -Url "!FFURL!" -DestExe "%BIN%\ffmpeg.exe" >> "%LOG%" 2>&1
     if errorlevel 1 (
-        call :log "GALAT: unduhan ffmpeg gagal."
-        call :log "Silakan unduh manual dari https://www.gyan.dev/ffmpeg/builds/"
+        call :log "GALAT: pemasangan ffmpeg gagal. Lihat build.log untuk detail."
+        call :log "Alternatif manual: unduh dari https://www.gyan.dev/ffmpeg/builds/"
         call :log "lalu letakkan ffmpeg.exe di: %BIN%\ffmpeg.exe"
-        goto :fail
-    )
-    for %%S in ("%ROOT%ffmpeg_dl.zip") do set "FFSIZE=%%~zS"
-    if !FFSIZE! lss 50000000 (
-        call :log "GALAT: file unduhan hanya !FFSIZE! byte (harusnya ~100MB+) — kemungkinan halaman error, bukan zip."
-        call :log "Hapus ffmpeg_dl.zip dan coba lagi, atau unduh manual dari https://www.gyan.dev/ffmpeg/builds/"
-        goto :fail
-    )
-    powershell -NoProfile -Command "Expand-Archive -Path '%ROOT%ffmpeg_dl.zip' -DestinationPath '%ROOT%ffmpeg_tmp' -Force" >> "%LOG%" 2>&1
-    if errorlevel 1 (
-        call :log "GALAT: gagal mengekstrak arsip ffmpeg (file rusak/tidak lengkap)."
-        call :log "Hapus ffmpeg_dl.zip dan coba lagi."
-        goto :fail
-    )
-    set "FFFOUND="
-    for /r "%ROOT%ffmpeg_tmp" %%F in (ffmpeg.exe) do (
-        if not defined FFFOUND (
-            copy "%%F" "%BIN%\ffmpeg.exe" >> "%LOG%" 2>&1
-            set "FFFOUND=1"
-        )
-    )
-    rmdir /s /q "%ROOT%ffmpeg_tmp" 2>nul
-    del "%ROOT%ffmpeg_dl.zip" 2>nul
-    if not exist "%BIN%\ffmpeg.exe" (
-        call :log "GALAT: ffmpeg.exe tak ketemu di arsip."
         goto :fail
     )
     call :log "ffmpeg.exe siap."
