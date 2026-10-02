@@ -68,11 +68,17 @@ if not exist "%BIN%\ffmpeg.exe" (
         )
     )
     call :log "URL: !FFURL!"
-    powershell -NoProfile -Command "Invoke-WebRequest -Uri '!FFURL!' -OutFile '%ROOT%ffmpeg_dl.zip'" >> "%LOG%" 2>&1
+    powershell -NoProfile -Command "Invoke-WebRequest -Uri '!FFURL!' -OutFile '%ROOT%ffmpeg_dl.zip' -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'" >> "%LOG%" 2>&1
     if !ERRORLEVEL! neq 0 (
         call :log "GALAT: unduhan ffmpeg gagal."
         call :log "Silakan unduh manual dari https://www.gyan.dev/ffmpeg/builds/"
         call :log "lalu letakkan ffmpeg.exe di: %BIN%\ffmpeg.exe"
+        goto :fail
+    )
+    for %%S in ("%ROOT%ffmpeg_dl.zip") do set "FFSIZE=%%~zS"
+    if !FFSIZE! lss 50000000 (
+        call :log "GALAT: file unduhan hanya !FFSIZE! byte (harusnya ~100MB+) — kemungkinan halaman error, bukan zip."
+        call :log "Hapus ffmpeg_dl.zip dan coba lagi, atau unduh manual dari https://www.gyan.dev/ffmpeg/builds/"
         goto :fail
     )
     if not "!FFSHA!"=="" (
@@ -87,6 +93,11 @@ if not exist "%BIN%\ffmpeg.exe" (
         call :log "PERINGATAN: SHA256 tidak diisi di tools\ffmpeg_win.txt, lewati verifikasi."
     )
     powershell -NoProfile -Command "Expand-Archive -Path '%ROOT%ffmpeg_dl.zip' -DestinationPath '%ROOT%ffmpeg_tmp' -Force" >> "%LOG%" 2>&1
+    if !ERRORLEVEL! neq 0 (
+        call :log "GALAT: gagal mengekstrak arsip ffmpeg (file rusak/tidak lengkap)."
+        call :log "Hapus ffmpeg_dl.zip dan coba lagi."
+        goto :fail
+    )
     for /r "%ROOT%ffmpeg_tmp" %%F in (ffmpeg.exe) do (
         copy "%%F" "%BIN%\ffmpeg.exe" >> "%LOG%" 2>&1
         goto :ffdone
