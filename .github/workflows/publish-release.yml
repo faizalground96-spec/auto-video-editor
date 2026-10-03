@@ -14,7 +14,7 @@ jobs:
           name: AutoVideoEditor-windows
           path: artifact
           run-id: 37093768271
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify silero_vad_v6.onnx bundled
         run: |
           ls -la artifact/_internal/faster_whisper/assets/silero_vad_v6.onnx
