@@ -1,4 +1,4 @@
-name: Publish Release v1.0.1
+name: Publish Release v1.0.3
 
 on:
   workflow_dispatch:
@@ -16,19 +16,23 @@ jobs:
         with:
           name: AutoVideoEditor-windows
           path: artifact
-          run-id: 37044398225
+          run-id: 37079449829
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify silero_vad_v6.onnx bundled
+        run: |
+          ls -la artifact/_internal/faster_whisper/assets/silero_vad_v6.onnx
+          test -f artifact/_internal/faster_whisper/assets/silero_vad_v6.onnx && echo "MODEL OK" || (echo "MODEL MISSING"; exit 1)
       - name: Re-zip artifact
         run: |
           cd artifact
           zip -qr ../AutoVideoEditor-windows.zip .
           ls -la ../AutoVideoEditor-windows.zip
-      - name: Create GitHub Release v1.0.1
+      - name: Create GitHub Release v1.0.3
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
-          name: v1.0.1
-          body: "Windows build of Auto Video Editor from commit 430f1c7 (bundles silero_vad_v6.onnx). Contains the portable Windows .exe package."
+          tag_name: v1.0.3
+          name: v1.0.3
+          body: "Windows build of Auto Video Editor from commit 098fcf8 (mode tanpa-AI / no-AI). Bundles silero_vad_v6.onnx. Contains the portable Windows .exe package."
           draft: false
           prerelease: false
           files: AutoVideoEditor-windows.zip
