@@ -105,8 +105,16 @@ class Pipeline:
     # -- run ---------------------------------------------------------------
     def run(self, opt: PipelineOptions) -> dict:
         opt.input = Path(opt.input)
-        work = Path(opt.work_dir) if opt.work_dir else (
-            self.dirs["work"] / opt.input.stem)
+        if opt.work_dir:
+            work = Path(opt.work_dir)
+        else:
+            import re, hashlib
+            stem = re.sub(r"[^\w\-. ]+", "_",
+                          opt.input.stem).strip() or "video"
+            if len(stem) > 60:
+                h = hashlib.sha256(stem.encode()).hexdigest()[:8]
+                stem = stem[:50] + "_" + h
+            work = self.dirs["work"] / stem
         work.mkdir(parents=True, exist_ok=True)
         # log ke berkas (plan: log pipeline tersimpan)
         fh = logging.FileHandler(work / "pipeline.log", encoding="utf-8")

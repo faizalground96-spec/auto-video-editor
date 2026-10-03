@@ -51,9 +51,21 @@ def _hash_source(path: Path) -> str:
 
 
 def _video_dir(work_root: Path, source: Path) -> Path:
-    """Folder kerja per video: work/<nama_video>/ (nama disterilkan)."""
+    """Folder kerja per video: work/<nama_video>/ (nama disterilkan).
+
+    Hindari nesting ganda: bila work_root sudah berakhiran nama video,
+    pakai langsung (mencegah path terlalu panjang di Windows).
+    """
     stem = re.sub(r"[^\w\-. ]+", "_", source.stem).strip() or "video"
-    d = work_root / stem
+    # potong nama terlalu panjang (batas aman Windows)
+    if len(stem) > 60:
+        import hashlib
+        h = hashlib.sha256(stem.encode()).hexdigest()[:8]
+        stem = stem[:50] + "_" + h
+    if work_root.name == stem:
+        d = work_root
+    else:
+        d = work_root / stem
     d.mkdir(parents=True, exist_ok=True)
     return d
 
