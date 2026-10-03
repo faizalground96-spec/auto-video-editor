@@ -393,6 +393,20 @@ def rule_based_edl(duration: float, aspect: str, words: list[dict],
                 return f
         return None
 
+    # efek yang butuh timestamp spesifik (requires_at)
+    _AT_REQUIRED = {"camera.punch_in", "camera.whip_pan",
+                    "overlay.emoji_burst", "transition.whip",
+                    "transition.zoom_blur"}
+
+    def _at_for(eid: str, start: float, end: float, idx: int):
+        """Timestamp untuk efek moment: tengah segmen, geser per indeks."""
+        if eid not in _AT_REQUIRED:
+            return None
+        mid = (start + end) / 2
+        # geser sedikit biar variatif, tetap dalam segmen
+        t = min(max(start + 1.0 + idx * 0.7, start + 0.5), end - 0.5)
+        return round(t, 3) if t < mid + 2 else round(mid, 3)
+
     cam_fx = [e for e in allowed if e.startswith("camera.")]
     txt_fx = text_style if text_style in allowed else pick(
         "text.", ["text.pop_in_word", "text.clean_caption"])
@@ -405,8 +419,9 @@ def rule_based_edl(duration: float, aspect: str, words: list[dict],
         effects = []
         # kamera: rotasi
         if cam_fx:
-            effects.append({"id": cam_fx[i % len(cam_fx)],
-                            "at": None, "params": {}})
+            eid = cam_fx[i % len(cam_fx)]
+            effects.append({"id": eid,
+                            "at": _at_for(eid, start, end, i), "params": {}})
         # teks kinetik: selalu, bila ada kata
         if seg_words and txt_fx:
             effects.append({"id": txt_fx, "at": None, "params": {}})
@@ -421,11 +436,13 @@ def rule_based_edl(duration: float, aspect: str, words: list[dict],
         # overlay sesekali
         ov = pick("overlay.", [])
         if ov and i % 3 == 1:
-            effects.append({"id": ov, "at": None, "params": {}})
+            effects.append({"id": ov,
+                            "at": _at_for(ov, start, end, i), "params": {}})
         # transisi antar segmen
         tr = pick("transition.", [])
         if tr and i > 0:
-            effects.append({"id": tr, "at": start, "params": {}})
+            effects.append({"id": tr, "at": _at_for(tr, start, end, i)
+                            or start, "params": {}})
         segments.append({
             "start": round(start, 3), "end": round(end, 3),
             "role": "body",
