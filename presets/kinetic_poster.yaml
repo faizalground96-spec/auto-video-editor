@@ -1,0 +1,20 @@
+name: kinetic_poster
+description: "Kinetic typography + motion graphics layering: teks 3D besar, background ganti tiap beat, CTA"
+allowed:
+  - text.poster_keyword
+  - text.pop_in_word
+  - text.red_keyword
+  - camera.punch_in
+  - camera.whip_pan
+  - grade.warm_pop
+  - grade.cinematic
+  - overlay.bg_color
+  - overlay.emoji_burst
+  - overlay.cta_button
+  - overlay.progress_bar
+  - transition.whip
+  - transition.zoom_blur
+fixed:
+  text_style: text.poster_keyword
+  grade: grade.warm_pop
+default_intensity: aggressive

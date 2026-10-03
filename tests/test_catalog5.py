@@ -51,7 +51,7 @@ def reg():
 
 
 def test_semua_21_efek_terdaftar(reg):
-    assert len(reg.entries) == 21
+    assert len(reg.entries) == 24  # 21 + poster_keyword, bg_color, cta_button
 
 
 # -- smoke build tiap efek (menangkap error filter/kontrak) ------------------
@@ -72,6 +72,10 @@ BUILD_CASES = [
                                     "right_from": 2.0, "right_to": 3.0}),
     ("overlay.emoji_burst", 1.0, {"sticker": "burst"}),
     ("overlay.progress_bar", None, {}),
+    ("overlay.bg_color", None, {"color": "maroon"}),
+    ("overlay.cta_button", None, {}),
+    ("text.poster_keyword", None, {"keywords": ["SKILL", "BISA DIJUAL"],
+                                   "color": "maroon"}),
     ("transition.whip", 6.0, {"direction": "out"}),
     ("transition.zoom_blur", 0.0, {"direction": "in"}),
     ("reframe.smart_crop", None, {}),   # butuh kurva; cukup cek error jelas

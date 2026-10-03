@@ -410,6 +410,9 @@ def rule_based_edl(duration: float, aspect: str, words: list[dict],
     cam_fx = [e for e in allowed if e.startswith("camera.")]
     txt_fx = text_style if text_style in allowed else pick(
         "text.", ["text.pop_in_word", "text.clean_caption"])
+    # warna background rotasi (untuk kinetic_poster)
+    bg_colors = ["cream", "maroon", "black", "dark_brown"]
+    is_last = lambda idx: idx == len(refined) - 2
     # kata penekanan: kata panjang (>6 huruf) tiap segmen, maks 3
     segments = []
     for i in range(len(refined) - 1):
@@ -417,6 +420,10 @@ def rule_based_edl(duration: float, aspect: str, words: list[dict],
         seg_words = [w for w in words
                      if w.get("end", 0) > start and w.get("start", 0) < end]
         effects = []
+        # background color: ganti tiap segmen (kinetic typography)
+        if "overlay.bg_color" in allowed:
+            effects.append({"id": "overlay.bg_color", "at": None,
+                            "params": {"color": bg_colors[i % len(bg_colors)]}})
         # kamera: rotasi
         if cam_fx:
             eid = cam_fx[i % len(cam_fx)]
@@ -424,7 +431,17 @@ def rule_based_edl(duration: float, aspect: str, words: list[dict],
                             "at": _at_for(eid, start, end, i), "params": {}})
         # teks kinetik: selalu, bila ada kata
         if seg_words and txt_fx:
-            effects.append({"id": txt_fx, "at": None, "params": {}})
+            # poster_keyword butuh keywords eksplisit
+            if txt_fx == "text.poster_keyword":
+                kws = sorted(set(w.get("word", "").strip()
+                                 for w in seg_words
+                                 if len(w.get("word", "").strip()) > 4),
+                             key=len, reverse=True)[:2]
+                if kws:
+                    effects.append({"id": txt_fx, "at": None,
+                                    "params": {"keywords": kws}})
+            else:
+                effects.append({"id": txt_fx, "at": None, "params": {}})
         # keyword merah: 1-3 kata terpanjang
         if seg_words and "text.red_keyword" in allowed:
             long_ws = sorted(set(w.get("word", "") for w in seg_words
@@ -433,9 +450,14 @@ def rule_based_edl(duration: float, aspect: str, words: list[dict],
             if long_ws:
                 effects.append({"id": "text.red_keyword", "at": None,
                                 "params": {"words": long_ws}})
-        # overlay sesekali
+        # CTA di segmen terakhir
+        if is_last(i) and "overlay.cta_button" in allowed:
+            effects.append({"id": "overlay.cta_button", "at": None,
+                            "params": {}})
+        # overlay sesekali (lewati bg_color & cta_button yg sudah khusus)
         ov = pick("overlay.", [])
-        if ov and i % 3 == 1:
+        if ov and ov not in ("overlay.bg_color", "overlay.cta_button") \
+                and i % 3 == 1:
             effects.append({"id": ov,
                             "at": _at_for(ov, start, end, i), "params": {}})
         # transisi antar segmen

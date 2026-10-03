@@ -43,7 +43,9 @@ def test_load_21_effects():
     reg = EffectRegistry(CATALOG, ASSETS).load()
     assert reg.errors == []
     ids = reg.all_ids()
-    assert len(ids) == 21
+    # 21 asli + 3 baru: poster_keyword, bg_color, cta_button
+    assert len(ids) == 24
+    assert "text.poster_keyword" in ids
     assert "text.pop_in_word" in ids
     assert "insert.face_grid" in ids  # beta
 

@@ -238,6 +238,7 @@ ScaledBorderAndShadow: yes
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Caption,{cap['font_family']},{font_px},{CAPTION_STYLE['primary']},&H000019FF&,{CAPTION_STYLE['outline']},{CAPTION_STYLE['back']},{CAPTION_STYLE['bold']},0,0,0,100,100,0,0,1,{CAPTION_STYLE['outline_w']},{CAPTION_STYLE['shadow']},2,{m_lr},{m_lr},{m_v},1
 Style: CaptionTop,{cap['font_family']},{font_px},{CAPTION_STYLE['primary']},&H000019FF&,{CAPTION_STYLE['outline']},{CAPTION_STYLE['back']},{CAPTION_STYLE['bold']},0,0,0,100,100,0,0,1,{CAPTION_STYLE['outline_w']},{CAPTION_STYLE['shadow']},8,{m_lr},{m_lr},{canvas.h(canvas.safe_top)},1
+Style: PosterBig,{cap['font_family']},{int(font_px * 2.2)},&H00FFFFFF,&H000019FF&,&H001A1A1A&,&H80000000&,-1,0,0,0,100,100,0,0,1,4,2,5,30,30,30,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
