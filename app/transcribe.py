@@ -75,7 +75,8 @@ def detect_silences(wav_path: Path, noise_db: float = -35.0,
     cmd = [ffmpeg, "-hide_banner", "-i", str(wav_path),
            "-af", f"silencedetect=noise={noise_db}dB:d={min_dur}",
            "-f", "null", "-"]
-    out = subprocess.run(cmd, capture_output=True, text=True)
+    out = subprocess.run(cmd, capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
     silences: list[dict] = []
     cur_start: Optional[float] = None
     for line in (out.stderr or "").splitlines():

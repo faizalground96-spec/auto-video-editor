@@ -84,7 +84,8 @@ def _detect_vfr(ffprobe: Path, path: Path, sample: int = 120) -> bool:
            "-of", "csv=p=0", "-read_intervals", f"%+#{sample}", str(path)]
     try:
         out = subprocess.run(cmd, capture_output=True, text=True,
-                             check=True, timeout=30)
+                             check=True, timeout=30,
+                             encoding="utf-8", errors="replace")
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return False
     durs = []
@@ -140,7 +141,8 @@ def probe(path: str | Path) -> SourceInfo:
 
     cmd = [str(ffprobe_cand), "-v", "error", "-show_format", "-show_streams",
            "-print_format", "json", str(path)]
-    out = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    out = subprocess.run(cmd, capture_output=True, text=True, check=True,
+                         encoding="utf-8", errors="replace")
     data = json.loads(out.stdout)
 
     fmt = data.get("format", {})

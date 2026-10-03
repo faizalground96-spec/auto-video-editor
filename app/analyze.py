@@ -358,6 +358,8 @@ def rule_based_edl(duration: float, aspect: str, words: list[dict],
       bila ada transkrip; grade & text_style dari fixed preset.
     """
     from .presets import preset_allowed_ids
+    words = words or []
+    silences = silences or []
     allowed = preset_allowed_ids(preset, registry) if preset else []
     fixed = (preset or {}).get("fixed") or {}
     text_style = fixed.get("text_style", "text.pop_in_word")
