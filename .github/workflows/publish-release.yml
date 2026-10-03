@@ -1,4 +1,4 @@
-name: Publish Release v1.0.3
+name: Publish Release v1.0.4
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
         with:
           name: AutoVideoEditor-windows
           path: artifact
-          run-id: 37079449829
+          run-id: 37085510273
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify silero_vad_v6.onnx bundled
         run: |
@@ -27,12 +27,12 @@ jobs:
           cd artifact
           zip -qr ../AutoVideoEditor-windows.zip .
           ls -la ../AutoVideoEditor-windows.zip
-      - name: Create GitHub Release v1.0.3
+      - name: Create GitHub Release v1.0.4
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.3
-          name: v1.0.3
-          body: "Windows build of Auto Video Editor from commit 098fcf8 (mode tanpa-AI / no-AI). Bundles silero_vad_v6.onnx. Contains the portable Windows .exe package."
+          tag_name: v1.0.4
+          name: v1.0.4
+          body: "Windows build of Auto Video Editor from commit 768fa7b (fix UnicodeDecodeError: paksa UTF-8 di subprocess untuk nama file emoji). Bundles silero_vad_v6.onnx. Contains the portable Windows .exe package."
           draft: false
           prerelease: false
           files: AutoVideoEditor-windows.zip
