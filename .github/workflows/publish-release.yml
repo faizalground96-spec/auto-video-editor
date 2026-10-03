@@ -1,15 +1,9 @@
-name: Publish Release v1.0.5
-
-
+name: Publish Release v1.0.7
 on:
   workflow_dispatch:
-
-
 permissions:
   contents: write
   actions: read
-
-
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -19,8 +13,8 @@ jobs:
         with:
           name: AutoVideoEditor-windows
           path: artifact
-          run-id: 37087681083
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 37093768271
+        github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify silero_vad_v6.onnx bundled
         run: |
           ls -la artifact/_internal/faster_whisper/assets/silero_vad_v6.onnx
@@ -30,12 +24,12 @@ jobs:
           cd artifact
           zip -qr ../AutoVideoEditor-windows.zip .
           ls -la ../AutoVideoEditor-windows.zip
-      - name: Create GitHub Release v1.0.5
+      - name: Create GitHub Release v1.0.7
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.5
-          name: v1.0.5
-          body: "Windows build of Auto Video Editor from commit a9718d9 (fix requires_at). Bundles silero_vad_v6.onnx. Contains the portable Windows .exe package."
+          tag_name: v1.0.7
+          name: v1.0.7
+          body: "Windows build of Auto Video Editor from commit bc4caec (preset kinetic_poster: text.poster_keyword, overlay.bg_color, overlay.cta_button). Bundles silero_vad_v6.onnx. Contains the portable Windows .exe package."
           draft: false
           prerelease: false
           files: AutoVideoEditor-windows.zip
