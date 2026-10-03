@@ -272,9 +272,10 @@ def validate_edl(raw: dict, registry, words: list[dict],
     strong_times.sort(key=_prio)
     kept_strong: list[tuple[float, str]] = []
     for t, eid, seg in strong_times:
-        win_start = (t // 10) * 10
+        # sliding window 10 dtk (selaras dengan QA check_density):
+        # hitung efek kuat dalam [t-10, t+10)
         in_win = sum(1 for kt, _ in kept_strong
-                     if win_start <= kt < win_start + 10)
+                     if kt > t - 10 and kt < t + 10)
         too_close = any(abs(kt - t) < min_gap for kt, _ in kept_strong)
         if in_win >= max_strong or too_close:
             drop(f"{eid} @ {t:.1f}s: melebihi anggaran "
@@ -335,6 +336,32 @@ def validate_edl(raw: dict, registry, words: list[dict],
             d["closing"] = None
         else:
             cl["text"] = text
+
+    # -- jaminan teks: bila tak ada efek text.* sama sekali, pakai ---------
+    #    text_style preset agar video tidak polos tanpa teks
+    has_text = any(
+        ef["id"].startswith("text.")
+        for seg in segs for ef in seg["effects"])
+    ts = (d["global"].get("text_style") or {})
+    ts_id = ts.get("id") if isinstance(ts, dict) else None
+    if not has_text and ts_id and ts_id in registry.entries:
+        for seg in segs:
+            seg_words = [w for w in words
+                         if w.get("end", 0) > seg["start"]
+                         and w.get("start", 0) < seg["end"]]
+            if not seg_words:
+                continue
+            params = {}
+            if ts_id == "text.poster_keyword":
+                kws = sorted(set(w.get("word", "").strip()
+                                 for w in seg_words
+                                 if len(w.get("word", "").strip()) > 4),
+                             key=len, reverse=True)[:2]
+                if kws:
+                    params = {"keywords": kws}
+            seg["effects"].append({"id": ts_id, "at": None,
+                                   "params": params})
+        fix(f"teks disuntik: {ts_id} (EDL tanpa efek teks)")
 
     if errors:
         return False, errors, d
